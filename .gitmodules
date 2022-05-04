@@ -1,0 +1,6 @@
+[submodule "vendor/glm"]
+	path = vendor/glm
+	url = git@github.com:g-truc/glm.git
+[submodule "vendor/jni.hpp"]
+	path = vendor/jni.hpp
+	url = git@github.com:mapbox/jni.hpp.git
