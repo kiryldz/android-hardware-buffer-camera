@@ -324,8 +324,8 @@ bool OpenGLRenderer::prepareEgl()
 
   attributePosition = glGetAttribLocation(program, "aPosition");
   attributeTextureCoord = glGetAttribLocation(program, "aTexCoord");
-  uniformTextureMatrix = glGetUniformLocation(program, "uTexMatrix");
-  uniformSampler = glGetUniformLocation(program, "sBackgroundSampler");
+  uniformMvp = glGetUniformLocation(program, "uMvpMatrix");
+  uniformSampler = glGetUniformLocation(program, "sExtSampler");
 
   eglPrepared = true;
   LOGE("EGL initialized, GPU is %s", (const char*)glGetString(GL_RENDERER));
@@ -376,13 +376,22 @@ void OpenGLRenderer::render() {
     nullptr
   );
   glEnableVertexAttribArray(attributeTextureCoord);
-  // TODO matrix is incorrect, calculate correct one
-  static const glm::mat4 mvp = glm::mat4(1.0f);
-  glUniformMatrix4fv(uniformTextureMatrix, 1, GL_FALSE, glm::value_ptr(mvp));
+  // TODO matrix must be calculated once
+  const float viewportRatio = static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
+  const float ratio = viewportRatio * bufferImageRatio;
+  auto proj = glm::frustum(-ratio, ratio, -1.f, 1.f, 3.f, 7.f);
+  auto view = glm::lookAt(
+    glm::vec3(0.f, 0.f, 3.f),
+    glm::vec3(0.f, 0.f, 0.f),
+    glm::vec3(1.f, 0.f, 0.f)
+    );
+  auto mvp = proj * view;
+  glUniformMatrix4fv(uniformMvp, 1, GL_FALSE, glm::value_ptr(mvp));
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraBufTex);
   glUniform1i(uniformSampler, 0);
   glDrawArrays(GL_TRIANGLE_STRIP, 0, vertexCount);
+  LOGE("GL error, render: %s", stringFromError(glGetError()));
   glDisableVertexAttribArray(attributePosition);
   glDisableVertexAttribArray(attributeTextureCoord);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -427,6 +436,11 @@ void OpenGLRenderer::eventLoop() {
 void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * buffer) {
   std::unique_lock<std::mutex> lock(mutex);
   LOGE("feed new hardware buffer");
+  // TODO do this code once
+  AHardwareBuffer_Desc description;
+  AHardwareBuffer_describe(buffer, &description);
+  bufferImageRatio = static_cast<float>(description.width) / static_cast<float>(description.height);
+
   // TODO introduce flag like needsRender, for now simply schedule event that buffer is available
   aHardwareBuffer = buffer;
   // TODO investigate acquire-release better, now it should be fine due to bufferAcquired lock

@@ -63,24 +63,24 @@ private:
   std::condition_variable eglDestroyed;
   std::condition_variable bufferAcquired;
 
-  const GLchar * vertexShaderSource = "precision highp float; uniform mat4 uTexMatrix; attribute vec4 aPosition; attribute vec2 aTexCoord; varying vec2 vTexCoord; void main() { gl_Position = aPosition; vec4 texCoord = vec4(aTexCoord, 0.0, 1.0); vTexCoord = (uTexMatrix * texCoord).xy; }";
-  const GLchar * fragmentShaderSource = "#extension GL_OES_EGL_image_external : require\nprecision mediump float; varying vec2 vTexCoord; uniform samplerExternalOES sBackgroundSampler; void main() { gl_FragColor = texture2D(sBackgroundSampler, vTexCoord); }";
-  float rectVertex[12] = {
-    -1.0f, -1.0f, 0.0f,
-    1.0f, -1.0f, 0.0f,
-    -1.0f, 1.0f, 0.0f,
-    1.0f, 1.0f, 0.0f
+  const GLchar * vertexShaderSource = "precision highp float; uniform mat4 uMvpMatrix; attribute vec2 aPosition; attribute vec2 aTexCoord; varying vec2 vCoordinate; void main() { vCoordinate = aTexCoord; gl_Position = uMvpMatrix * vec4(aPosition, 0.0, 1.0); }";
+  const GLchar * fragmentShaderSource = "#extension GL_OES_EGL_image_external : require\nprecision mediump float; varying vec2 vCoordinate; uniform samplerExternalOES sExtSampler; void main() { gl_FragColor = texture2D(sExtSampler, vCoordinate); }";
+  float rectVertex[8] = {
+    -1.0f, -1.0f,
+    -1.0f, 1.0f,
+    1.0f, -1.0f,
+    1.0f, 1.0f
   };
   float rectTex[8] = {
     0.0f, 0.0f,
-    1.0f, 0.0f,
     0.0f, 1.0f,
+    1.0f, 0.0f,
     1.0f, 1.0f
   };
-  int coordsPerVertex = 3;
+  int coordsPerVertex = 2;
   int coordsPerTex = 2;
-  int vertexStride = coordsPerVertex * 4;
-  int texStride = coordsPerTex * 4;
+  int vertexStride = coordsPerVertex * sizeof(float);
+  int texStride = coordsPerTex * sizeof(float);
   int vertexCount = (sizeof(rectVertex) / sizeof(*rectVertex)) / coordsPerVertex;
   GLuint program = 0;
   GLuint vertexShader = 0;
@@ -88,10 +88,10 @@ private:
   GLuint vbo[2];
   GLuint attributePosition = 0;
   GLuint attributeTextureCoord = 0;
-  GLint uniformTextureMatrix = 0;
+  GLint uniformMvp = 0;
   GLint uniformSampler = 0;
 
-
+  float bufferImageRatio = 1.0f;
   // egl
   volatile bool eglPrepared = false;
 
