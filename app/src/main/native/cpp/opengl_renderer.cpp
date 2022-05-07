@@ -192,14 +192,14 @@ bool OpenGLRenderer::prepareEgl()
   const int attr[] = {
     EGL_CONFIG_CAVEAT, EGL_NONE,
     EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-    EGL_BUFFER_SIZE, 24,
+    EGL_BUFFER_SIZE, 32,
     EGL_RED_SIZE, 8,
     EGL_GREEN_SIZE, 8,
     EGL_BLUE_SIZE, 8,
-    EGL_ALPHA_SIZE, 0,
-    EGL_DEPTH_SIZE, 24,
-    EGL_STENCIL_SIZE, 8,
-    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+    EGL_ALPHA_SIZE, 8,
+    EGL_DEPTH_SIZE, 0,
+    EGL_STENCIL_SIZE, 0,
+    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
     EGL_NONE
   };
 
@@ -243,7 +243,7 @@ bool OpenGLRenderer::prepareEgl()
     return false;
   }
   const int attribute_list[] = {
-    EGL_CONTEXT_CLIENT_VERSION, 2,
+    EGL_CONTEXT_CLIENT_VERSION, 3,
     EGL_NONE
   };
 
@@ -261,30 +261,26 @@ bool OpenGLRenderer::prepareEgl()
     return false;
   }
 
-  LOGE("EGL version: %s", eglQueryString(eglGetCurrentDisplay(), EGL_VERSION));
-
   // initialize extensions
 
   eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC) eglGetProcAddress("eglCreateImageKHR");
   if (!eglCreateImageKHR)
   {
-    LOGE("Couldn't get function pointer to eglCreateImageKHR!");
+    LOGE("Couldn't get function pointer to eglCreateImageKHR extension!");
     return false;
   }
   glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC) eglGetProcAddress("glEGLImageTargetTexture2DOES");
   if (!glEGLImageTargetTexture2DOES)
   {
-    LOGE("Couldn't get function pointer to glEGLImageTargetTexture2DOES!");
+    LOGE("Couldn't get function pointer to glEGLImageTargetTexture2DOES extension!");
     return false;
   }
   eglGetNativeClientBufferANDROID = (PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC) eglGetProcAddress("eglGetNativeClientBufferANDROID");
   if (!eglGetNativeClientBufferANDROID)
   {
-    LOGE("Couldn't get function pointer to eglGetNativeClientBufferANDROID!");
+    LOGE("Couldn't get function pointer to eglGetNativeClientBufferANDROID extension!");
     return false;
   }
-  // texture
-  glGenTextures(1, &cameraBufTex);
 
   // initial setup
 
@@ -301,6 +297,12 @@ bool OpenGLRenderer::prepareEgl()
   glAttachShader(program, fragmentShader);
   glLinkProgram(program);
   checkLinkStatus(program);
+
+  glGenTextures(1, &cameraBufTex);
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraBufTex);
+  glTexParameterf(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
 
   glGenBuffers(2, vbo);
   glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
@@ -325,8 +327,14 @@ bool OpenGLRenderer::prepareEgl()
   uniformSampler = glGetUniformLocation(program, "sExtSampler");
 
   eglPrepared = true;
-  LOGE("EGL initialized, GPU is %s", (const char*)glGetString(GL_RENDERER));
-  LOGE("GL error, initial config: %s", stringFromError(glGetError()));
+  LOGE("EGL initialized, version %s, GPU is %s",
+       eglQueryString(eglGetCurrentDisplay(), EGL_VERSION),
+       (const char*)glGetString(GL_RENDERER)
+  );
+  LOGE("GL initialized, errors on context: %s, version: %s",
+       stringFromError(glGetError()),
+       glGetString(GL_VERSION)
+  );
   eglInitialized.notify_one();
 
   return true;

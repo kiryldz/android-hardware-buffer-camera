@@ -7,8 +7,9 @@
 #include <android/native_window_jni.h>
 
 #include <EGL/egl.h>
-#include <GLES2/gl2.h>
 #include <EGL/eglext.h>
+#include <GLES3/gl3.h>
+// need it for glEGLImageTargetTexture2DOES
 #include <GLES2/gl2ext.h>
 
 #include <glm/glm.hpp>
