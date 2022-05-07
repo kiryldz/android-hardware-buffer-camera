@@ -48,8 +48,9 @@ int looperCallback(int fd, int events, void* data) {
     // TODO check what are the arguments
     static EGLint attrs[] = { EGL_NONE };
     EGLImageKHR image = eglCreateImageKHR(
-      renderer->eglDisplay,
-      renderer->eglContext,
+      eglGetCurrentDisplay(),
+      // TODO a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
+      EGL_NO_CONTEXT,
       EGL_NATIVE_BUFFER_ANDROID,
       eglGetNativeClientBufferANDROID(renderer->aHardwareBuffer),
       attrs);
@@ -260,11 +261,7 @@ bool OpenGLRenderer::prepareEgl()
     return false;
   }
 
-  eglDisplay = display;
-  eglContext = context;
-  eglSurface = surface;
-
-  LOGE("EGL version: %s", eglQueryString(eglDisplay, EGL_VERSION));
+  LOGE("EGL version: %s", eglQueryString(eglGetCurrentDisplay(), EGL_VERSION));
 
   // initialize extensions
 
@@ -338,15 +335,11 @@ bool OpenGLRenderer::prepareEgl()
 void OpenGLRenderer::destroyEgl() {
   LOGE("Destroying EGL");
 
-  eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-  eglDestroyContext(eglDisplay, eglContext);
-  eglDestroySurface(eglDisplay, eglSurface);
+  eglMakeCurrent(eglGetCurrentDisplay(), EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+  eglDestroyContext(eglGetCurrentDisplay(), eglGetCurrentContext());
+  eglDestroySurface(eglGetCurrentDisplay(), eglGetCurrentSurface(EGL_DRAW));
   eglReleaseThread();
-  eglTerminate(eglDisplay);
-
-  eglDisplay = EGL_NO_DISPLAY;
-  eglContext = EGL_NO_CONTEXT;
-  eglSurface = EGL_NO_SURFACE;
+  eglTerminate(eglGetCurrentDisplay());
 
   eglPrepared = false;
   LOGE("EGL destroyed!");
@@ -396,7 +389,7 @@ void OpenGLRenderer::render() {
   glDisableVertexAttribArray(attributeTextureCoord);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glUseProgram(0);
-  if (!eglSwapBuffers(eglDisplay, eglSurface)) {
+  if (!eglSwapBuffers(eglGetCurrentDisplay(), eglGetCurrentSurface(EGL_DRAW))) {
     LOGE("eglSwapBuffers returned error %d", eglGetError());
   } else {
     LOGE("Swapped buffers!");
