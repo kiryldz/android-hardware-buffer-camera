@@ -39,8 +39,6 @@ public:
   int viewportWidth = -1;
   int viewportHeight = -1;
 
-  EGLDisplay eglDisplay;
-  EGLContext eglContext;
   GLuint cameraBufTex;
 
   OpenGLRenderer();
@@ -94,8 +92,6 @@ private:
   float bufferImageRatio = 1.0f;
   // egl
   volatile bool eglPrepared = false;
-
-  EGLSurface eglSurface;
 
   void eventLoop();
 };
