@@ -20,10 +20,7 @@ target_link_libraries(
     native-engine
     PRIVATE
         EGL
-        # we are using GLES2 as glEGLImageTargetTexture2DOES is missing in GLES3 while we need external texture rendering
-        # need to investigate more, link to start https://www.khronos.org/registry/OpenGL/extensions/OES/OES_EGL_image_external.txt
-        # perhaps we could still use GLES3 with ext file from either GLES or GLES2 but for confidence using GLES2 now
-        GLESv2
+        GLESv3
         android
         log
         glm
