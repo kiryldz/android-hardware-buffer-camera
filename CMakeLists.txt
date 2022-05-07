@@ -13,8 +13,14 @@ add_library(
         app/src/main/native/cpp/core_engine.cpp
         app/src/main/native/cpp/opengl_renderer.cpp
 )
+
 add_subdirectory(vendor/glm)
-include_directories(vendor/jni.hpp/include)
+add_subdirectory(vendor/oneTBB)
+
+include_directories(
+        vendor/oneTBB/include
+        vendor/jni.hpp/include
+)
 
 target_link_libraries(
     native-engine
@@ -24,4 +30,5 @@ target_link_libraries(
         android
         log
         glm
+        tbb
 )

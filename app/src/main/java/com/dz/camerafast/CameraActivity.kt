@@ -70,20 +70,22 @@ class CameraActivity : AppCompatActivity() {
             val cameraProvider = cameraProviderFuture.get()
 
             // Set up the image analysis use case which will process frames in real time
-            // Interesting thet setTargetRotation does not make any effect
             val imageAnalysis = ImageAnalysis.Builder()
                 .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_BLOCK_PRODUCER)
+                .setImageQueueDepth(3)
                 .build()
 
             imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
+                Log.e(TAG, "New image arrived!")
                 imageProxy.image?.hardwareBuffer?.let { buffer ->
-                    Log.e(TAG, "Buffer w=${buffer.width}, h=${buffer.height}, format=${buffer.format}")
-                    // TODO profiler shows we're leaking memory, investigate, most likely due to not releasing buffer itself
                     coreEngine.feedHardwareBuffer(buffer)
+                    Log.e(TAG, "Buffer fed.")
+                    buffer.close()
                 }
                 imageProxy.close()
+                Log.e(TAG, "Image closed!")
             }
 
             // Create a new camera selector each time, enforcing lens facing
