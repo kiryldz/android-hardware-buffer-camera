@@ -11,13 +11,11 @@ void doFrame(long, void* data) {
   auto * renderer = reinterpret_cast<engine::android::OpenGLRenderer*>(data);
   if (renderer->couldRender()) {
     renderer->render();
-    // posting next frame callback, no need to explicitly wake the looper afterwards
-    // as AChoreographer seems to operate with it's own fd and callbacks
-    // TODO no need to actually post the callback if there's nothing to draw (new buffer did not arrive)
-    AChoreographer_postFrameCallback(renderer->aChoreographer, doFrame, renderer);
-    if (renderer->aHwBufferQueue.unsafe_size() > 0) {
+    // perform the check if aHwBufferQueue is not empty - then we need to catch up
+    AHardwareBuffer * aHardwareBuffer;
+    if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
       LOGE("Catching up as some more buffers could be consumed!");
-      renderer->hwBufferToExternalTexture();
+      renderer->hwBufferToExternalTexture(aHardwareBuffer);
     }
   }
 }
@@ -30,6 +28,8 @@ int looperCallback(int fd, int events, void* data) {
   if (std::string(buffer) == "setWindow") {
     renderer->prepareEgl();
     renderer->aChoreographer = AChoreographer_getInstance();
+    // posting next frame callback, no need to explicitly wake the looper afterwards
+    // as AChoreographer seems to operate with it's own fd and callbacks
     AChoreographer_postFrameCallback(renderer->aChoreographer, doFrame, renderer);
   } else if (std::string(buffer) == "destroy__") {
     // TODO validate that fd is the correct one here
@@ -50,7 +50,10 @@ int looperCallback(int fd, int events, void* data) {
     renderer->destroyEgl();
     renderer->aNativeWindow = nullptr;
   } else if (std::string(buffer) == "buffReady") {
-    renderer->hwBufferToExternalTexture();
+    AHardwareBuffer * aHardwareBuffer;
+    if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
+      renderer->hwBufferToExternalTexture(aHardwareBuffer);
+    }
   }
   // returning 1 to continue receiving callbacks
   return 1;
@@ -323,6 +326,8 @@ bool OpenGLRenderer::prepareEgl()
        glGetString(GL_VERSION)
   );
   eglPrepared = true;
+  // make sure that if we resume - buffer does not contain outdated frames
+  aHwBufferQueue.clear();
   eglInitialized.notify_one();
   return true;
 }
@@ -425,48 +430,46 @@ void OpenGLRenderer::eventLoop() {
   ALooper_pollAll(-1, &outFd, &outEvents, reinterpret_cast<void**>(&outData));
 }
 
-void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * buffer) {
+void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer) {
   if (!hardwareBufferDescribed) {
     AHardwareBuffer_Desc description;
-    AHardwareBuffer_describe(buffer, &description);
+    AHardwareBuffer_describe(aHardwareBuffer, &description);
     bufferImageRatio = static_cast<float>(description.width) / static_cast<float>(description.height);
   }
   // it seems that there's no leak even if we do not explicitly acquire / release but guess better do that
-  AHardwareBuffer_acquire(buffer);
-  aHwBufferQueue.push(buffer);
+  AHardwareBuffer_acquire(aHardwareBuffer);
+  aHwBufferQueue.push(aHardwareBuffer);
   LOGE("feed new hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
   write(fds[PIPE_IN], "buffReady", 9);
 }
 
-void OpenGLRenderer::hwBufferToExternalTexture() {
-// EGL could have already be destroyed beforehand
-  if (eglPrepared) {
-    static EGLint attrs[] = { EGL_NONE };
-    AHardwareBuffer * latestBuffer;
-    if (aHwBufferQueue.try_pop(latestBuffer)) {
-      LOGE("drain hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
-      EGLImageKHR image = eglCreateImageKHR(
-        eglDisplay,
-        // a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
-        // on Mali G77 passing valid OpenGL context works here but EGL_NO_CONTEXT works as well so
-        // leaving EGL_NO_CONTEXT here
-        EGL_NO_CONTEXT,
-        EGL_NATIVE_BUFFER_ANDROID,
-        eglGetNativeClientBufferANDROID(latestBuffer),
-        attrs);
-      glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraBufTex);
-      glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, image);
-      glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
-      // interesting - works OK destroying it here, before actual rendering
-      eglDestroyImageKHR(eglDisplay, image);
-      // still not precisely clear - if AHardwareBuffer is 'shared' memory -
-      // releasing it here should lead to missing texture data when drawing
-      // but it works as expected if we do release memory here
-      AHardwareBuffer_release(latestBuffer);
-      if (!hardwareBufferDescribed) {
-        hardwareBufferDescribed = true;
-      }
-    }
+void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer) {
+  // EGL could have already be destroyed beforehand
+  if (!eglPrepared) return;
+  // first thing post another doFrame callback as we will need to render this texture
+  AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
+  static EGLint attrs[] = { EGL_NONE };
+  LOGE("drain hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
+  EGLImageKHR image = eglCreateImageKHR(
+    eglDisplay,
+    // a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
+    // on Mali G77 passing valid OpenGL context works here but EGL_NO_CONTEXT works as well so
+    // leaving EGL_NO_CONTEXT here
+    EGL_NO_CONTEXT,
+    EGL_NATIVE_BUFFER_ANDROID,
+    eglGetNativeClientBufferANDROID(aHardwareBuffer),
+    attrs);
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraBufTex);
+  glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, image);
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+  // interesting - works OK destroying it here, before actual rendering
+  eglDestroyImageKHR(eglDisplay, image);
+  // still not precisely clear - if AHardwareBuffer is 'shared' memory -
+  // releasing it here should lead to missing texture data when drawing
+  // but it works as expected if we do release memory here
+  AHardwareBuffer_release(aHardwareBuffer);
+  if (!hardwareBufferDescribed) {
+    hardwareBufferDescribed = true;
   }
 }
 

@@ -63,8 +63,10 @@ public:
   bool prepareEgl();
   void destroyEgl();
 
-  void hwBufferToExternalTexture();
-  void feedHardwareBuffer(AHardwareBuffer * buffer);
+  // called from render thread
+  void hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer);
+  // called from camera worker thread
+  void feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer);
 
 private:
   std::thread renderThread;
