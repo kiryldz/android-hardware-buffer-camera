@@ -45,23 +45,29 @@ int looperCallback(int fd, int events, void* data) {
     renderer->destroyEgl();
     renderer->aNativeWindow = nullptr;
   } else if (std::string(buffer) == "buffReady") {
-    // TODO check what are the arguments
-    static EGLint attrs[] = { EGL_NONE };
-    EGLImageKHR image = eglCreateImageKHR(
-      eglGetCurrentDisplay(),
-      // TODO a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
-      EGL_NO_CONTEXT,
-      EGL_NATIVE_BUFFER_ANDROID,
-      eglGetNativeClientBufferANDROID(renderer->aHardwareBuffer),
-      attrs);
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, renderer->cameraBufTex);
-    glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, image);
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+    // EGL could have already be destroyed beforehand
+    if (renderer->eglPrepared) {
+      static EGLint attrs[] = { EGL_NONE };
+      EGLImageKHR image = eglCreateImageKHR(
+        renderer->eglDisplay,
+        // TODO a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
+        EGL_NO_CONTEXT,
+        EGL_NATIVE_BUFFER_ANDROID,
+        eglGetNativeClientBufferANDROID(renderer->aHardwareBuffer),
+        attrs);
+      glBindTexture(GL_TEXTURE_EXTERNAL_OES, renderer->cameraBufTex);
+      glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, image);
+      glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+      if (!renderer->hardwareBufferDescribed) {
+        renderer->hardwareBufferDescribed = true;
+      }
+    } else {
+      renderer->hwBufferAcquired.notify_one();
+    }
   }
   // returning 1 to continue receiving callbacks
   return 1;
 }
-
 }
 
 namespace engine {
@@ -127,8 +133,6 @@ void checkCompileStatus(GLuint shader) {
   }
 }
 
-
-
 // OPENGL HELPER METHODS END
 
 OpenGLRenderer::OpenGLRenderer(): renderThread(std::thread(&OpenGLRenderer::eventLoop, this)) {
@@ -144,8 +148,7 @@ OpenGLRenderer::~OpenGLRenderer() {
 
 void OpenGLRenderer::setWindow(ANativeWindow * window) {
   // TODO for sure refactor for something more elegant, perhaps move thread with looper to another class
-
-  std::unique_lock<std::mutex> lock(mutex);
+  std::unique_lock<std::mutex> lock(eglMutex);
   aNativeWindow = window;
   // schedule an event to the render thread
   write(fds[PIPE_IN], "setWindow", 9);
@@ -163,7 +166,7 @@ void OpenGLRenderer::updateWindowSize(int width, int height) {
 }
 
 void OpenGLRenderer::resetWindow() {
-  std::unique_lock<std::mutex> lock(mutex);
+  std::unique_lock<std::mutex> lock(eglMutex);
   LOGE("resetWindow");
   write(fds[PIPE_IN], "resetWind", 9);
   LOGE("resetWindow waiting for destroying EGL...");
@@ -185,14 +188,12 @@ bool OpenGLRenderer::prepareEgl()
   EGLint format;
   EGLSurface surface;
   EGLContext context;
-  EGLint width;
-  EGLint height;
 
-  // TODO think of better config, now using one for Samsung S20 Ultra 5G
+  // using classic RGBA 8888 config, trust Google Grafika here,
+  // see https://github.com/google/grafika/blob/b1df331e89cffeab621f02b102d4c2c25eb6088a/app/src/main/java/com/android/grafika/gles/EglCore.java#L150-L152
   const int attr[] = {
     EGL_CONFIG_CAVEAT, EGL_NONE,
     EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-    EGL_BUFFER_SIZE, 32,
     EGL_RED_SIZE, 8,
     EGL_GREEN_SIZE, 8,
     EGL_BLUE_SIZE, 8,
@@ -203,41 +204,35 @@ bool OpenGLRenderer::prepareEgl()
     EGL_NONE
   };
 
-  if ((display = eglGetDisplay(EGL_DEFAULT_DISPLAY)) == EGL_NO_DISPLAY)
-  {
+  if ((display = eglGetDisplay(EGL_DEFAULT_DISPLAY)) == EGL_NO_DISPLAY) {
     LOGE("eglGetDisplay() returned error %d", eglGetError());
     return false;
   }
-  if (!eglInitialize(display, 0, 0))
-  {
+  if (!eglInitialize(display, nullptr, nullptr)) {
     LOGE("eglInitialize() returned error %d", eglGetError());
     return false;
   }
 
-  if (!eglChooseConfig(display, attr, &config, 1, &numConfigs))
-  {
+  if (!eglChooseConfig(display, attr, &config, 1, &numConfigs)) {
     LOGE("eglChooseConfig() returned error %d", eglGetError());
     destroyEgl();
     return false;
   }
 
-  if (!eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &format))
-  {
+  if (!eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &format)) {
     LOGE("eglGetConfigAttrib() returned error %d", eglGetError());
     destroyEgl();
     return false;
   }
 
-  if (!aNativeWindow)
-  {
+  if (!aNativeWindow) {
     LOGW("ANativeWindow was destroyed, could not prepare EGL");
     return false;
   }
 
   ANativeWindow_setBuffersGeometry(aNativeWindow, 0, 0, format);
 
-  if (!(surface = eglCreateWindowSurface(display, config, aNativeWindow, 0)))
-  {
+  if (!(surface = eglCreateWindowSurface(display, config, aNativeWindow, nullptr))) {
     LOGE("eglCreateWindowSurface() returned error %d", eglGetError());
     destroyEgl();
     return false;
@@ -247,42 +242,43 @@ bool OpenGLRenderer::prepareEgl()
     EGL_NONE
   };
 
-  if (!(context = eglCreateContext(display, config, 0, attribute_list)))
-  {
+  if (!(context = eglCreateContext(display, config, nullptr, attribute_list))) {
     LOGE("eglCreateContext() returned error %d", eglGetError());
     destroyEgl();
     return false;
   }
 
-  if (!eglMakeCurrent(display, surface, surface, context))
-  {
+  if (!eglMakeCurrent(display, surface, surface, context)) {
     LOGE("eglMakeCurrent() returned error %d", eglGetError());
     destroyEgl();
     return false;
   }
 
+  // need to cache all those to properly release them when Android destroys surface
+  // we can't rely on eglGetCurrentContext() etc impl's as they will already be accessing bad surface, context, display at that point
+  eglDisplay = display;
+  eglSurface = surface;
+  eglContext = context;
+
   // initialize extensions
 
   eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC) eglGetProcAddress("eglCreateImageKHR");
-  if (!eglCreateImageKHR)
-  {
+  if (!eglCreateImageKHR) {
     LOGE("Couldn't get function pointer to eglCreateImageKHR extension!");
     return false;
   }
   glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC) eglGetProcAddress("glEGLImageTargetTexture2DOES");
-  if (!glEGLImageTargetTexture2DOES)
-  {
+  if (!glEGLImageTargetTexture2DOES) {
     LOGE("Couldn't get function pointer to glEGLImageTargetTexture2DOES extension!");
     return false;
   }
   eglGetNativeClientBufferANDROID = (PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC) eglGetProcAddress("eglGetNativeClientBufferANDROID");
-  if (!eglGetNativeClientBufferANDROID)
-  {
+  if (!eglGetNativeClientBufferANDROID) {
     LOGE("Couldn't get function pointer to eglGetNativeClientBufferANDROID extension!");
     return false;
   }
 
-  // initial setup
+  // initial OpenGL ES setup
 
   program = glCreateProgram();
   vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -326,36 +322,43 @@ bool OpenGLRenderer::prepareEgl()
   uniformMvp = glGetUniformLocation(program, "uMvpMatrix");
   uniformSampler = glGetUniformLocation(program, "sExtSampler");
 
-  eglPrepared = true;
   LOGE("EGL initialized, version %s, GPU is %s",
-       eglQueryString(eglGetCurrentDisplay(), EGL_VERSION),
+       eglQueryString(eglDisplay, EGL_VERSION),
        (const char*)glGetString(GL_RENDERER)
   );
   LOGE("GL initialized, errors on context: %s, version: %s",
        stringFromError(glGetError()),
        glGetString(GL_VERSION)
   );
+  eglPrepared = true;
   eglInitialized.notify_one();
-
   return true;
 }
 
 void OpenGLRenderer::destroyEgl() {
   LOGE("Destroying EGL");
-
-  eglMakeCurrent(eglGetCurrentDisplay(), EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-  eglDestroyContext(eglGetCurrentDisplay(), eglGetCurrentContext());
-  eglDestroySurface(eglGetCurrentDisplay(), eglGetCurrentSurface(EGL_DRAW));
+  eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+  eglDestroyContext(eglDisplay, eglContext);
+  eglDestroySurface(eglDisplay, eglSurface);
+  eglTerminate(eglDisplay);
+  eglDisplay = EGL_NO_DISPLAY;
+  eglSurface = EGL_NO_SURFACE;
+  eglContext = EGL_NO_CONTEXT;
   eglReleaseThread();
-  eglTerminate(eglGetCurrentDisplay());
-
-  eglPrepared = false;
   LOGE("EGL destroyed!");
+  eglPrepared = false;
   eglDestroyed.notify_one();
 }
 
 void OpenGLRenderer::render() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  // no actual camera drawing to do if first hardware buffer was not described and loaded to ext texture
+  if (!hardwareBufferDescribed) {
+    if (!eglSwapBuffers(eglDisplay, eglSurface)) {
+      LOGE("eglSwapBuffers returned error %d", eglGetError());
+    }
+    return;
+  }
   glUseProgram(program);
   glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
   glVertexAttribPointer(
@@ -377,34 +380,33 @@ void OpenGLRenderer::render() {
     nullptr
   );
   glEnableVertexAttribArray(attributeTextureCoord);
-  // TODO matrix must be calculated once
-  const float viewportRatio = static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
-  const float ratio = viewportRatio * bufferImageRatio;
-  auto proj = glm::frustum(-ratio, ratio, -1.f, 1.f, 3.f, 7.f);
-  auto view = glm::lookAt(
+  // calculate MVP matrix only once
+  static const float viewportRatio = static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
+  static const float ratio = viewportRatio * bufferImageRatio;
+  static auto proj = glm::frustum(-ratio, ratio, -1.f, 1.f, 3.f, 7.f);
+  static auto view = glm::lookAt(
     glm::vec3(0.f, 0.f, 3.f),
     glm::vec3(0.f, 0.f, 0.f),
     glm::vec3(1.f, 0.f, 0.f)
     );
-  auto mvp = proj * view;
+  static auto mvp = proj * view;
   glUniformMatrix4fv(uniformMvp, 1, GL_FALSE, glm::value_ptr(mvp));
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraBufTex);
   glUniform1i(uniformSampler, 0);
   glDrawArrays(GL_TRIANGLE_STRIP, 0, vertexCount);
-  LOGE("GL error, render: %s", stringFromError(glGetError()));
   glDisableVertexAttribArray(attributePosition);
   glDisableVertexAttribArray(attributeTextureCoord);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glUseProgram(0);
-  if (!eglSwapBuffers(eglGetCurrentDisplay(), eglGetCurrentSurface(EGL_DRAW))) {
+  if (!eglSwapBuffers(eglDisplay, eglSurface)) {
     LOGE("eglSwapBuffers returned error %d", eglGetError());
   } else {
-    LOGE("Swapped buffers!");
+//    LOGE("Swapped buffers!");
   }
   // TODO releasing leads to null ptr dereference, revisit
 //  AHardwareBuffer_release(aHardwareBuffer);
-  bufferAcquired.notify_one();
+  hwBufferAcquired.notify_one();
 }
 
 void OpenGLRenderer::eventLoop() {
@@ -435,20 +437,20 @@ void OpenGLRenderer::eventLoop() {
 }
 
 void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * buffer) {
-  std::unique_lock<std::mutex> lock(mutex);
+  std::unique_lock<std::mutex> lock(hwBufferMutex);
   LOGE("feed new hardware buffer");
-  // TODO do this code once
-  AHardwareBuffer_Desc description;
-  AHardwareBuffer_describe(buffer, &description);
-  bufferImageRatio = static_cast<float>(description.width) / static_cast<float>(description.height);
-
+  if (!hardwareBufferDescribed) {
+    AHardwareBuffer_Desc description;
+    AHardwareBuffer_describe(buffer, &description);
+    bufferImageRatio = static_cast<float>(description.width) / static_cast<float>(description.height);
+  }
   // TODO introduce flag like needsRender, for now simply schedule event that buffer is available
   aHardwareBuffer = buffer;
   // TODO investigate acquire-release better, now it should be fine due to bufferAcquired lock
 //  AHardwareBuffer_acquire(aHardwareBuffer);
   write(fds[PIPE_IN], "buffReady", 9);
   // TODO ideally we need buffer queue and not lock camera worker thread but for simplicity add the lock now
-  bufferAcquired.wait(lock);
+  hwBufferAcquired.wait(lock);
 }
 
 } // namespace android
