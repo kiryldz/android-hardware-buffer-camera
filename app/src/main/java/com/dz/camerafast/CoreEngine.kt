@@ -1,5 +1,6 @@
 package com.dz.camerafast
 
+import android.graphics.PixelFormat
 import android.hardware.HardwareBuffer
 import android.util.Log
 import android.view.Surface
@@ -12,6 +13,8 @@ class CoreEngine(
 ) : SurfaceHolder.Callback {
 
     init {
+        // we will use RGBA_8888 here and use same config in render thread
+        surfaceHolder.setFormat(PixelFormat.RGBA_8888)
         System.loadLibrary("native-engine")
         initialize()
         surfaceHolder.addCallback(this)

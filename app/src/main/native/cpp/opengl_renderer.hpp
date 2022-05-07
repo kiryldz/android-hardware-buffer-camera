@@ -9,7 +9,7 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
-// need it for glEGLImageTargetTexture2DOES
+// needed for glEGLImageTargetTexture2DOES
 #include <GLES2/gl2ext.h>
 
 #include <glm/glm.hpp>
@@ -40,7 +40,15 @@ public:
   int viewportWidth = -1;
   int viewportHeight = -1;
 
+  bool hardwareBufferDescribed = false;
+  volatile bool eglPrepared = false;
+
+  EGLDisplay eglDisplay;
+  EGLContext eglContext;
+  EGLSurface eglSurface;
+
   GLuint cameraBufTex;
+  std::condition_variable hwBufferAcquired;
 
   OpenGLRenderer();
   ~OpenGLRenderer();
@@ -57,10 +65,10 @@ public:
 
 private:
   std::thread renderThread;
-  std::mutex mutex;
+  std::mutex eglMutex;
+  std::mutex hwBufferMutex;
   std::condition_variable eglInitialized;
   std::condition_variable eglDestroyed;
-  std::condition_variable bufferAcquired;
 
   const GLchar * vertexShaderSource = "precision highp float; uniform mat4 uMvpMatrix; attribute vec2 aPosition; attribute vec2 aTexCoord; varying vec2 vCoordinate; void main() { vCoordinate = aTexCoord; gl_Position = uMvpMatrix * vec4(aPosition, 0.0, 1.0); }";
   const GLchar * fragmentShaderSource = "#extension GL_OES_EGL_image_external : require\nprecision mediump float; varying vec2 vCoordinate; uniform samplerExternalOES sExtSampler; void main() { gl_FragColor = texture2D(sExtSampler, vCoordinate); }";
@@ -91,8 +99,6 @@ private:
   GLint uniformSampler = 0;
 
   float bufferImageRatio = 1.0f;
-  // egl
-  volatile bool eglPrepared = false;
 
   void eventLoop();
 };
