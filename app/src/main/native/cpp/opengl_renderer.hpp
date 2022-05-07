@@ -16,6 +16,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <tbb/concurrent_queue.h>
+
 #include <fcntl.h>
 #include <thread>
 #include <unistd.h>
@@ -34,13 +36,12 @@ public:
   AChoreographer * aChoreographer = nullptr;
   ALooper * aLooper = nullptr;
   ANativeWindow * aNativeWindow = nullptr;
-  AHardwareBuffer * aHardwareBuffer = nullptr;
 
   int fds[2];
   int viewportWidth = -1;
   int viewportHeight = -1;
 
-  bool hardwareBufferDescribed = false;
+  volatile bool hardwareBufferDescribed = false;
   volatile bool eglPrepared = false;
 
   EGLDisplay eglDisplay;
@@ -48,7 +49,8 @@ public:
   EGLSurface eglSurface;
 
   GLuint cameraBufTex;
-  std::condition_variable hwBufferAcquired;
+  // concurrent queue needed as worker camera thread produces buffers while render thread consumes them
+  tbb::concurrent_queue<AHardwareBuffer*> aHwBufferQueue;
 
   OpenGLRenderer();
   ~OpenGLRenderer();
@@ -61,12 +63,12 @@ public:
   bool prepareEgl();
   void destroyEgl();
 
+  void hwBufferToExternalTexture();
   void feedHardwareBuffer(AHardwareBuffer * buffer);
 
 private:
   std::thread renderThread;
   std::mutex eglMutex;
-  std::mutex hwBufferMutex;
   std::condition_variable eglInitialized;
   std::condition_variable eglDestroyed;
 

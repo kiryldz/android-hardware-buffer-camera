@@ -2,6 +2,7 @@
 
 PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC eglGetNativeClientBufferANDROID = nullptr;
 PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR = nullptr;
+PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR = nullptr;
 PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = nullptr;
 
 namespace {
@@ -14,6 +15,10 @@ void doFrame(long, void* data) {
     // as AChoreographer seems to operate with it's own fd and callbacks
     // TODO no need to actually post the callback if there's nothing to draw (new buffer did not arrive)
     AChoreographer_postFrameCallback(renderer->aChoreographer, doFrame, renderer);
+    if (renderer->aHwBufferQueue.unsafe_size() > 0) {
+      LOGE("Catching up as some more buffers could be consumed!");
+      renderer->hwBufferToExternalTexture();
+    }
   }
 }
 
@@ -45,25 +50,7 @@ int looperCallback(int fd, int events, void* data) {
     renderer->destroyEgl();
     renderer->aNativeWindow = nullptr;
   } else if (std::string(buffer) == "buffReady") {
-    // EGL could have already be destroyed beforehand
-    if (renderer->eglPrepared) {
-      static EGLint attrs[] = { EGL_NONE };
-      EGLImageKHR image = eglCreateImageKHR(
-        renderer->eglDisplay,
-        // TODO a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
-        EGL_NO_CONTEXT,
-        EGL_NATIVE_BUFFER_ANDROID,
-        eglGetNativeClientBufferANDROID(renderer->aHardwareBuffer),
-        attrs);
-      glBindTexture(GL_TEXTURE_EXTERNAL_OES, renderer->cameraBufTex);
-      glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, image);
-      glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
-      if (!renderer->hardwareBufferDescribed) {
-        renderer->hardwareBufferDescribed = true;
-      }
-    } else {
-      renderer->hwBufferAcquired.notify_one();
-    }
+    renderer->hwBufferToExternalTexture();
   }
   // returning 1 to continue receiving callbacks
   return 1;
@@ -272,6 +259,11 @@ bool OpenGLRenderer::prepareEgl()
     LOGE("Couldn't get function pointer to glEGLImageTargetTexture2DOES extension!");
     return false;
   }
+  eglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC) eglGetProcAddress("eglDestroyImageKHR");
+  if (!eglDestroyImageKHR) {
+    LOGE("Couldn't get function pointer to eglDestroyImageKHR extension!");
+    return false;
+  }
   eglGetNativeClientBufferANDROID = (PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC) eglGetProcAddress("eglGetNativeClientBufferANDROID");
   if (!eglGetNativeClientBufferANDROID) {
     LOGE("Couldn't get function pointer to eglGetNativeClientBufferANDROID extension!");
@@ -402,11 +394,8 @@ void OpenGLRenderer::render() {
   if (!eglSwapBuffers(eglDisplay, eglSurface)) {
     LOGE("eglSwapBuffers returned error %d", eglGetError());
   } else {
-//    LOGE("Swapped buffers!");
+    LOGE("Swapped buffers!");
   }
-  // TODO releasing leads to null ptr dereference, revisit
-//  AHardwareBuffer_release(aHardwareBuffer);
-  hwBufferAcquired.notify_one();
 }
 
 void OpenGLRenderer::eventLoop() {
@@ -437,20 +426,48 @@ void OpenGLRenderer::eventLoop() {
 }
 
 void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * buffer) {
-  std::unique_lock<std::mutex> lock(hwBufferMutex);
-  LOGE("feed new hardware buffer");
   if (!hardwareBufferDescribed) {
     AHardwareBuffer_Desc description;
     AHardwareBuffer_describe(buffer, &description);
     bufferImageRatio = static_cast<float>(description.width) / static_cast<float>(description.height);
   }
-  // TODO introduce flag like needsRender, for now simply schedule event that buffer is available
-  aHardwareBuffer = buffer;
-  // TODO investigate acquire-release better, now it should be fine due to bufferAcquired lock
-//  AHardwareBuffer_acquire(aHardwareBuffer);
+  // it seems that there's no leak even if we do not explicitly acquire / release but guess better do that
+  AHardwareBuffer_acquire(buffer);
+  aHwBufferQueue.push(buffer);
+  LOGE("feed new hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
   write(fds[PIPE_IN], "buffReady", 9);
-  // TODO ideally we need buffer queue and not lock camera worker thread but for simplicity add the lock now
-  hwBufferAcquired.wait(lock);
+}
+
+void OpenGLRenderer::hwBufferToExternalTexture() {
+// EGL could have already be destroyed beforehand
+  if (eglPrepared) {
+    static EGLint attrs[] = { EGL_NONE };
+    AHardwareBuffer * latestBuffer;
+    if (aHwBufferQueue.try_pop(latestBuffer)) {
+      LOGE("drain hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
+      EGLImageKHR image = eglCreateImageKHR(
+        eglDisplay,
+        // a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
+        // on Mali G77 passing valid OpenGL context works here but EGL_NO_CONTEXT works as well so
+        // leaving EGL_NO_CONTEXT here
+        EGL_NO_CONTEXT,
+        EGL_NATIVE_BUFFER_ANDROID,
+        eglGetNativeClientBufferANDROID(latestBuffer),
+        attrs);
+      glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraBufTex);
+      glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, image);
+      glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+      // interesting - works OK destroying it here, before actual rendering
+      eglDestroyImageKHR(eglDisplay, image);
+      // still not precisely clear - if AHardwareBuffer is 'shared' memory -
+      // releasing it here should lead to missing texture data when drawing
+      // but it works as expected if we do release memory here
+      AHardwareBuffer_release(latestBuffer);
+      if (!hardwareBufferDescribed) {
+        hardwareBufferDescribed = true;
+      }
+    }
+  }
 }
 
 } // namespace android

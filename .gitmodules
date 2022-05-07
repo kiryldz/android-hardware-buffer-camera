@@ -4,3 +4,6 @@
 [submodule "vendor/jni.hpp"]
 	path = vendor/jni.hpp
 	url = git@github.com:mapbox/jni.hpp.git
+[submodule "vendor/oneTBB"]
+	path = vendor/oneTBB
+	url = git@github.com:oneapi-src/oneTBB.git
