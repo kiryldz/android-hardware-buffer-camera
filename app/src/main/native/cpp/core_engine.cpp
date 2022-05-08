@@ -4,7 +4,7 @@ namespace engine {
 namespace android {
 
 CoreEngine::CoreEngine(JNIEnv & env): aNativeWindow(nullptr), openGlRenderer(std::make_unique<OpenGLRenderer>()) {
-  LOGE("Core engine created");
+  LOGI("Core engine created");
 }
 
 CoreEngine::~CoreEngine() = default;
@@ -34,9 +34,9 @@ void CoreEngine::nativeFeedHardwareBuffer(JNIEnv & env, const jni::Object <Hardw
 }
 
 void CoreEngine::nativeDestroy(JNIEnv & env) {
-  LOGE("Core engine destroy started");
+  LOGI("Core engine destroy started");
   openGlRenderer.reset();
-  LOGE("Core engine destroy passed");
+  LOGI("Core engine destroy passed");
 }
 
 } // namespace android

@@ -32,48 +32,20 @@ namespace android {
 
 class OpenGLRenderer {
 public:
-
-  AChoreographer * aChoreographer = nullptr;
-  ALooper * aLooper = nullptr;
-  ANativeWindow * aNativeWindow = nullptr;
-
-  int fds[2];
-  int viewportWidth = -1;
-  int viewportHeight = -1;
-
-  volatile bool hardwareBufferDescribed = false;
-  volatile bool eglPrepared = false;
-
-  EGLDisplay eglDisplay;
-  EGLContext eglContext;
-  EGLSurface eglSurface;
-
-  GLuint cameraBufTex;
-  // concurrent queue needed as worker camera thread produces buffers while render thread consumes them
-  tbb::concurrent_queue<AHardwareBuffer*> aHwBufferQueue;
-
   OpenGLRenderer();
   ~OpenGLRenderer();
 
   void setWindow(ANativeWindow * window);
   void updateWindowSize(int width, int height);
   void resetWindow();
-  void render();
-  bool couldRender() const;
-  bool prepareEgl();
-  void destroyEgl();
-
-  // called from render thread
-  void hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer);
-  // called from camera worker thread
+  /**
+   * Always called from camera worker thread - feed new camera buffer.
+   * @param aHardwareBuffer
+   */
   void feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer);
 
 private:
-  std::thread renderThread;
-  std::mutex eglMutex;
-  std::condition_variable eglInitialized;
-  std::condition_variable eglDestroyed;
-
+  ///////// OpenGL
   const GLchar * vertexShaderSource = "#version 320 es\n"
                                       "precision highp float;"
                                       "uniform mat4 uMvpMatrix;"
@@ -93,12 +65,17 @@ private:
                                         "void main() {"
                                         " FragColor = texture(sExtSampler, vCoordinate);"
                                         "}";
+
+  /**
+   * Store all the verticies in one array and operate with strides instead of storing 2 VBOs:
+   * one for positions coordinates and another for texture coordinates.
+   */
   float vertexArray[16] = {
     // positions    // texture coordinates
     -1.0f, -1.0f,   0.0f, 0.0f,
     -1.0f,  1.0f,   0.0f, 1.0f,
-     1.0f, -1.0f,   1.0f, 0.0f,
-     1.0f,  1.0f,   1.0f, 1.0f
+    1.0f, -1.0f,   1.0f, 0.0f,
+    1.0f,  1.0f,   1.0f, 1.0f
   };
   GLuint program = 0;
   GLuint vertexShader = 0;
@@ -106,10 +83,56 @@ private:
   GLuint vbo[1];
   GLint uniformMvp = 0;
   GLint externalSampler = 0;
+  GLuint cameraExternalTex = 0;
 
+  ///////// EGL
+
+  EGLDisplay eglDisplay;
+  EGLContext eglContext;
+  EGLSurface eglSurface;
+
+  ///////// Threads and threading
+
+  std::thread renderThread;
+  std::mutex eglMutex;
+  std::condition_variable eglInitialized;
+  std::condition_variable eglDestroyed;
+  /**
+   * Concurrent queue needed as worker camera thread produces buffers while render thread consumes them.
+   */
+  tbb::concurrent_queue<AHardwareBuffer*> aHwBufferQueue;
+
+  ///////// Variables
+
+  AChoreographer * aChoreographer = nullptr;
+  ALooper * aLooper = nullptr;
+  ANativeWindow * aNativeWindow = nullptr;
+
+  int fds[2];
+  int viewportWidth = -1;
+  int viewportHeight = -1;
+  volatile bool hardwareBufferDescribed = false;
+  volatile bool eglPrepared = false;
   float bufferImageRatio = 1.0f;
 
+  ///////// Functions
+
   void eventLoop();
+  bool couldRender() const;
+  void render();
+  bool prepareEgl();
+  void destroyEgl();
+
+  /**
+   * Always called from render thread - converting hardware buffer to an OpenGL external texture.
+   * @param aHardwareBuffer
+   */
+  void hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer);
+
+  ///////// Callbacks for AChoreographer and ALooper stored as private static functions
+
+  static void doFrame(long timeStampNanos, void* data);
+  static int looperCallback(int fd, int events, void* data);
 };
 
 } // namespace android
