@@ -78,14 +78,14 @@ class CameraActivity : AppCompatActivity() {
                 .build()
 
             imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
-                Log.e(TAG, "New image arrived!")
+                Log.i(TAG, "New image arrived!")
                 imageProxy.image?.hardwareBuffer?.let { buffer ->
                     coreEngine.feedHardwareBuffer(buffer)
-                    Log.e(TAG, "Buffer fed.")
                     buffer.close()
+                    Log.i(TAG, "Buffer fed and closed in Java!")
                 }
                 imageProxy.close()
-                Log.e(TAG, "Image closed!")
+                Log.i(TAG, "Image closed!")
             }
 
             // Create a new camera selector each time, enforcing lens facing
@@ -98,7 +98,7 @@ class CameraActivity : AppCompatActivity() {
             cameraProvider.bindToLifecycle(
                 this as LifecycleOwner, cameraSelector, imageAnalysis
             )
-            Log.e(TAG, "Camera set up!")
+            Log.i(TAG, "Camera set up!")
         }, ContextCompat.getMainExecutor(this))
     }
 

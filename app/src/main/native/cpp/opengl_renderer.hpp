@@ -74,33 +74,38 @@ private:
   std::condition_variable eglInitialized;
   std::condition_variable eglDestroyed;
 
-  const GLchar * vertexShaderSource = "precision highp float; uniform mat4 uMvpMatrix; attribute vec2 aPosition; attribute vec2 aTexCoord; varying vec2 vCoordinate; void main() { vCoordinate = aTexCoord; gl_Position = uMvpMatrix * vec4(aPosition, 0.0, 1.0); }";
-  const GLchar * fragmentShaderSource = "#extension GL_OES_EGL_image_external : require\nprecision mediump float; varying vec2 vCoordinate; uniform samplerExternalOES sExtSampler; void main() { gl_FragColor = texture2D(sExtSampler, vCoordinate); }";
-  float rectVertex[8] = {
-    -1.0f, -1.0f,
-    -1.0f, 1.0f,
-    1.0f, -1.0f,
-    1.0f, 1.0f
+  const GLchar * vertexShaderSource = "#version 320 es\n"
+                                      "precision highp float;"
+                                      "uniform mat4 uMvpMatrix;"
+                                      "layout (location = 0) in vec2 aPosition;"
+                                      "layout (location = 1) in vec2 aTexCoord;"
+                                      "out vec2 vCoordinate;"
+                                      "void main() {"
+                                      " vCoordinate = aTexCoord;"
+                                      " gl_Position = uMvpMatrix * vec4(aPosition, 0.0, 1.0);"
+                                      "}";
+  const GLchar * fragmentShaderSource = "#version 320 es\n"
+                                        "#extension GL_OES_EGL_image_external_essl3 : require\n"
+                                        "precision mediump float;"
+                                        "in vec2 vCoordinate;"
+                                        "out vec4 FragColor;"
+                                        "uniform samplerExternalOES sExtSampler;"
+                                        "void main() {"
+                                        " FragColor = texture(sExtSampler, vCoordinate);"
+                                        "}";
+  float vertexArray[16] = {
+    // positions    // texture coordinates
+    -1.0f, -1.0f,   0.0f, 0.0f,
+    -1.0f,  1.0f,   0.0f, 1.0f,
+     1.0f, -1.0f,   1.0f, 0.0f,
+     1.0f,  1.0f,   1.0f, 1.0f
   };
-  float rectTex[8] = {
-    0.0f, 0.0f,
-    0.0f, 1.0f,
-    1.0f, 0.0f,
-    1.0f, 1.0f
-  };
-  int coordsPerVertex = 2;
-  int coordsPerTex = 2;
-  int vertexStride = coordsPerVertex * sizeof(float);
-  int texStride = coordsPerTex * sizeof(float);
-  int vertexCount = (sizeof(rectVertex) / sizeof(*rectVertex)) / coordsPerVertex;
   GLuint program = 0;
   GLuint vertexShader = 0;
   GLuint fragmentShader = 0;
-  GLuint vbo[2];
-  GLuint attributePosition = 0;
-  GLuint attributeTextureCoord = 0;
+  GLuint vbo[1];
   GLint uniformMvp = 0;
-  GLint uniformSampler = 0;
+  GLint externalSampler = 0;
 
   float bufferImageRatio = 1.0f;
 

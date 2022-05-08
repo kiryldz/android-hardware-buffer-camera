@@ -25,7 +25,7 @@ class CoreEngine(
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        Log.e(TAG, "surface changed ${holder.surface}, format $format, width $width, height $height")
+        Log.i(TAG, "Surface changed ${holder.surface}, format $format, width $width, height $height")
         nativeSetSurface(holder.surface, width, height)
     }
 

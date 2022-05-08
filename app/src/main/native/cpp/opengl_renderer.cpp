@@ -14,7 +14,7 @@ void doFrame(long, void* data) {
     // perform the check if aHwBufferQueue is not empty - then we need to catch up
     AHardwareBuffer * aHardwareBuffer;
     if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
-      LOGE("Catching up as some more buffers could be consumed!");
+      LOGI("Catching up as some more buffers could be consumed!");
       renderer->hwBufferToExternalTexture(aHardwareBuffer);
     }
   }
@@ -43,7 +43,7 @@ int looperCallback(int fd, int events, void* data) {
     // returning 0 to have this file descriptor and callback unregistered from the looper
     return 0;
   } else if (std::string(buffer) == "updWinSiz") {
-    LOGE("update window size, width=%i, height=%i", renderer->viewportWidth, renderer->viewportHeight);
+    LOGI("update window size, width=%i, height=%i", renderer->viewportWidth, renderer->viewportHeight);
     glClearColor(0.5, 0.5, 0.5, 0.5);
     glViewport(0, 0, renderer->viewportWidth, renderer->viewportHeight);
   } else if (std::string(buffer) == "resetWind") {
@@ -106,7 +106,7 @@ void checkLinkStatus(GLuint program) {
     glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength);
     GLchar infoLog[maxLength];
     glGetProgramInfoLog(program, maxLength, &maxLength, &infoLog[0]);
-    LOGE("%s", &infoLog[0]);
+    LOGE("GL shader link status: %s", &infoLog[0]);
   }
 }
 
@@ -119,7 +119,7 @@ void checkCompileStatus(GLuint shader) {
     // The maxLength includes the NULL character
     GLchar errorLog[maxLength];
     glGetShaderInfoLog(shader, maxLength, &maxLength, &errorLog[0]);
-    LOGE("%s", &errorLog[0]);
+    LOGE("GL shader link status: %s", &errorLog[0]);
   }
 }
 
@@ -129,11 +129,11 @@ OpenGLRenderer::OpenGLRenderer(): renderThread(std::thread(&OpenGLRenderer::even
 }
 
 OpenGLRenderer::~OpenGLRenderer() {
-  LOGE("OpenGLRenderer destructor");
+  LOGI("OpenGLRenderer destructor");
   write(fds[PIPE_IN], "destroy__", 9);
-  LOGE("OpenGLRenderer renderThread.join waiting");
+  LOGI("OpenGLRenderer renderThread.join waiting");
   renderThread.join();
-  LOGE("OpenGLRenderer render thread killed");
+  LOGI("OpenGLRenderer render thread killed");
 }
 
 void OpenGLRenderer::setWindow(ANativeWindow * window) {
@@ -142,9 +142,9 @@ void OpenGLRenderer::setWindow(ANativeWindow * window) {
   aNativeWindow = window;
   // schedule an event to the render thread
   write(fds[PIPE_IN], "setWindow", 9);
-  LOGE("setWindow waiting for context creation...");
+  LOGI("setWindow waiting for context creation...");
   eglInitialized.wait(lock);
-  LOGE("setWindow resume main thread");
+  LOGI("setWindow resume main thread");
 }
 
 void OpenGLRenderer::updateWindowSize(int width, int height) {
@@ -157,11 +157,11 @@ void OpenGLRenderer::updateWindowSize(int width, int height) {
 
 void OpenGLRenderer::resetWindow() {
   std::unique_lock<std::mutex> lock(eglMutex);
-  LOGE("resetWindow");
+  LOGI("resetWindow");
   write(fds[PIPE_IN], "resetWind", 9);
-  LOGE("resetWindow waiting for destroying EGL...");
+  LOGI("resetWindow waiting for destroying EGL...");
   eglDestroyed.wait(lock);
-  LOGE("resetWindow resume main thread");
+  LOGI("resetWindow resume main thread");
 }
 
 bool OpenGLRenderer::couldRender() const {
@@ -170,7 +170,7 @@ bool OpenGLRenderer::couldRender() const {
 
 bool OpenGLRenderer::prepareEgl()
 {
-  LOGE("Configuring EGL");
+  LOGI("Configuring EGL");
 
   EGLDisplay display;
   EGLConfig config;
@@ -295,45 +295,39 @@ bool OpenGLRenderer::prepareEgl()
   glTexParameterf(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
 
-  glGenBuffers(2, vbo);
+  glGenBuffers(1, vbo);
   glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
   glBufferData(
     GL_ARRAY_BUFFER,
-    sizeof(rectVertex),
-    rectVertex,
-    GL_STATIC_DRAW
-  );
-  glBindBuffer(GL_ARRAY_BUFFER, vbo[1]);
-  glBufferData(
-    GL_ARRAY_BUFFER,
-    sizeof(rectTex),
-    rectTex,
+    sizeof(vertexArray),
+    vertexArray,
     GL_STATIC_DRAW
   );
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-  attributePosition = glGetAttribLocation(program, "aPosition");
-  attributeTextureCoord = glGetAttribLocation(program, "aTexCoord");
   uniformMvp = glGetUniformLocation(program, "uMvpMatrix");
-  uniformSampler = glGetUniformLocation(program, "sExtSampler");
+  externalSampler = glGetUniformLocation(program, "sExtSampler");
 
-  LOGE("EGL initialized, version %s, GPU is %s",
+  LOGI("EGL initialized, version %s, GPU is %s",
        eglQueryString(eglDisplay, EGL_VERSION),
        (const char*)glGetString(GL_RENDERER)
   );
-  LOGE("GL initialized, errors on context: %s, version: %s",
+  LOGI("GL initialized, errors on context: %s, version: %s",
        stringFromError(glGetError()),
        glGetString(GL_VERSION)
   );
   eglPrepared = true;
-  // make sure that if we resume - buffer does not contain outdated frames
-  aHwBufferQueue.clear();
+  // make sure that if we resume - buffer does not contain outdated frames so pop and release them
+  AHardwareBuffer * aHardwareBuffer;
+  while (aHwBufferQueue.try_pop(aHardwareBuffer)) {
+    AHardwareBuffer_release(aHardwareBuffer);
+  }
   eglInitialized.notify_one();
   return true;
 }
 
 void OpenGLRenderer::destroyEgl() {
-  LOGE("Destroying EGL");
+  LOGI("Destroying EGL");
   eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
   eglDestroyContext(eglDisplay, eglContext);
   eglDestroySurface(eglDisplay, eglSurface);
@@ -342,7 +336,7 @@ void OpenGLRenderer::destroyEgl() {
   eglSurface = EGL_NO_SURFACE;
   eglContext = EGL_NO_CONTEXT;
   eglReleaseThread();
-  LOGE("EGL destroyed!");
+  LOGI("EGL destroyed!");
   eglPrepared = false;
   eglDestroyed.notify_one();
 }
@@ -359,24 +353,23 @@ void OpenGLRenderer::render() {
   glUseProgram(program);
   glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
   glVertexAttribPointer(
-    attributePosition,
-    coordsPerVertex,
+    0,
+    2,
     GL_FLOAT,
     GL_FALSE,
-    vertexStride,
+    4 * sizeof(float),
     nullptr
   );
-  glEnableVertexAttribArray(attributePosition);
-  glBindBuffer(GL_ARRAY_BUFFER, vbo[1]);
+  glEnableVertexAttribArray(0);
   glVertexAttribPointer(
-    attributeTextureCoord,
-    coordsPerTex,
+    1,
+    2,
     GL_FLOAT,
     GL_FALSE,
-    texStride,
-    nullptr
+    4 * sizeof(float),
+    (void*) (2 * sizeof(float))
   );
-  glEnableVertexAttribArray(attributeTextureCoord);
+  glEnableVertexAttribArray(1);
   // calculate MVP matrix only once
   static const float viewportRatio = static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
   static const float ratio = viewportRatio * bufferImageRatio;
@@ -390,16 +383,16 @@ void OpenGLRenderer::render() {
   glUniformMatrix4fv(uniformMvp, 1, GL_FALSE, glm::value_ptr(mvp));
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraBufTex);
-  glUniform1i(uniformSampler, 0);
-  glDrawArrays(GL_TRIANGLE_STRIP, 0, vertexCount);
-  glDisableVertexAttribArray(attributePosition);
-  glDisableVertexAttribArray(attributeTextureCoord);
+  glUniform1i(externalSampler, 0);
+  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+  glDisableVertexAttribArray(0);
+  glDisableVertexAttribArray(1);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glUseProgram(0);
   if (!eglSwapBuffers(eglDisplay, eglSurface)) {
     LOGE("eglSwapBuffers returned error %d", eglGetError());
   } else {
-    LOGE("Swapped buffers!");
+    LOGI("Swapped buffers!");
   }
 }
 
@@ -439,7 +432,7 @@ void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer) {
   // it seems that there's no leak even if we do not explicitly acquire / release but guess better do that
   AHardwareBuffer_acquire(aHardwareBuffer);
   aHwBufferQueue.push(aHardwareBuffer);
-  LOGE("feed new hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
+  LOGI("feed new hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
   write(fds[PIPE_IN], "buffReady", 9);
 }
 
@@ -449,7 +442,7 @@ void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer
   // first thing post another doFrame callback as we will need to render this texture
   AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
   static EGLint attrs[] = { EGL_NONE };
-  LOGE("drain hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
+  LOGI("drain hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
   EGLImageKHR image = eglCreateImageKHR(
     eglDisplay,
     // a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
