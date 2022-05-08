@@ -78,14 +78,14 @@ class CameraActivity : AppCompatActivity() {
                 .build()
 
             imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
-                Log.e(TAG, "New image arrived!")
+//                Log.e(TAG, "New image arrived!")
                 imageProxy.image?.hardwareBuffer?.let { buffer ->
                     coreEngine.feedHardwareBuffer(buffer)
-                    Log.e(TAG, "Buffer fed.")
+//                    Log.e(TAG, "Buffer fed.")
                     buffer.close()
                 }
                 imageProxy.close()
-                Log.e(TAG, "Image closed!")
+//                Log.e(TAG, "Image closed!")
             }
 
             // Create a new camera selector each time, enforcing lens facing

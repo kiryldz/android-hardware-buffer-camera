@@ -106,7 +106,7 @@ void checkLinkStatus(GLuint program) {
     glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength);
     GLchar infoLog[maxLength];
     glGetProgramInfoLog(program, maxLength, &maxLength, &infoLog[0]);
-    LOGE("%s", &infoLog[0]);
+    LOGE("GL shader link status: %s", &infoLog[0]);
   }
 }
 
@@ -119,7 +119,7 @@ void checkCompileStatus(GLuint shader) {
     // The maxLength includes the NULL character
     GLchar errorLog[maxLength];
     glGetShaderInfoLog(shader, maxLength, &maxLength, &errorLog[0]);
-    LOGE("%s", &errorLog[0]);
+    LOGE("GL shader link status: %s", &errorLog[0]);
   }
 }
 
@@ -312,8 +312,8 @@ bool OpenGLRenderer::prepareEgl()
   );
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-  attributePosition = glGetAttribLocation(program, "aPosition");
-  attributeTextureCoord = glGetAttribLocation(program, "aTexCoord");
+//  attributePosition = glGetAttribLocation(program, "aPosition");
+//  attributeTextureCoord = glGetAttribLocation(program, "aTexCoord");
   uniformMvp = glGetUniformLocation(program, "uMvpMatrix");
   uniformSampler = glGetUniformLocation(program, "sExtSampler");
 
@@ -359,24 +359,24 @@ void OpenGLRenderer::render() {
   glUseProgram(program);
   glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
   glVertexAttribPointer(
-    attributePosition,
-    coordsPerVertex,
+    0,
+    coordinatesPerVertex,
     GL_FLOAT,
     GL_FALSE,
     vertexStride,
     nullptr
   );
-  glEnableVertexAttribArray(attributePosition);
+  glEnableVertexAttribArray(0);
   glBindBuffer(GL_ARRAY_BUFFER, vbo[1]);
   glVertexAttribPointer(
-    attributeTextureCoord,
-    coordsPerTex,
+    1,
+    coordinatesPerTex,
     GL_FLOAT,
     GL_FALSE,
     texStride,
     nullptr
   );
-  glEnableVertexAttribArray(attributeTextureCoord);
+  glEnableVertexAttribArray(1);
   // calculate MVP matrix only once
   static const float viewportRatio = static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
   static const float ratio = viewportRatio * bufferImageRatio;
@@ -399,7 +399,7 @@ void OpenGLRenderer::render() {
   if (!eglSwapBuffers(eglDisplay, eglSurface)) {
     LOGE("eglSwapBuffers returned error %d", eglGetError());
   } else {
-    LOGE("Swapped buffers!");
+//    LOGE("Swapped buffers!");
   }
 }
 
@@ -439,7 +439,7 @@ void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer) {
   // it seems that there's no leak even if we do not explicitly acquire / release but guess better do that
   AHardwareBuffer_acquire(aHardwareBuffer);
   aHwBufferQueue.push(aHardwareBuffer);
-  LOGE("feed new hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
+//  LOGE("feed new hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
   write(fds[PIPE_IN], "buffReady", 9);
 }
 
@@ -449,7 +449,7 @@ void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer
   // first thing post another doFrame callback as we will need to render this texture
   AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
   static EGLint attrs[] = { EGL_NONE };
-  LOGE("drain hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
+//  LOGE("drain hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
   EGLImageKHR image = eglCreateImageKHR(
     eglDisplay,
     // a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...

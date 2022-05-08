@@ -74,8 +74,25 @@ private:
   std::condition_variable eglInitialized;
   std::condition_variable eglDestroyed;
 
-  const GLchar * vertexShaderSource = "precision highp float; uniform mat4 uMvpMatrix; attribute vec2 aPosition; attribute vec2 aTexCoord; varying vec2 vCoordinate; void main() { vCoordinate = aTexCoord; gl_Position = uMvpMatrix * vec4(aPosition, 0.0, 1.0); }";
-  const GLchar * fragmentShaderSource = "#extension GL_OES_EGL_image_external : require\nprecision mediump float; varying vec2 vCoordinate; uniform samplerExternalOES sExtSampler; void main() { gl_FragColor = texture2D(sExtSampler, vCoordinate); }";
+  const GLchar * vertexShaderSource = "#version 320 es\n"
+                                      "precision highp float;"
+                                      "uniform mat4 uMvpMatrix;"
+                                      "layout (location = 0) in vec2 aPosition;"
+                                      "layout (location = 1) in vec2 aTexCoord;"
+                                      "out vec2 vCoordinate;"
+                                      "void main() {"
+                                      " vCoordinate = aTexCoord;"
+                                      " gl_Position = uMvpMatrix * vec4(aPosition, 0.0, 1.0);"
+                                      "}";
+  const GLchar * fragmentShaderSource = "#version 320 es\n"
+                                        "#extension GL_OES_EGL_image_external_essl3 : require\n"
+                                        "precision mediump float;"
+                                        "in vec2 vCoordinate;"
+                                        "out vec4 FragColor;"
+                                        "uniform samplerExternalOES sExtSampler;"
+                                        "void main() {"
+                                        " FragColor = texture(sExtSampler, vCoordinate);"
+                                        "}";
   float rectVertex[8] = {
     -1.0f, -1.0f,
     -1.0f, 1.0f,
@@ -88,11 +105,11 @@ private:
     1.0f, 0.0f,
     1.0f, 1.0f
   };
-  int coordsPerVertex = 2;
-  int coordsPerTex = 2;
-  int vertexStride = coordsPerVertex * sizeof(float);
-  int texStride = coordsPerTex * sizeof(float);
-  int vertexCount = (sizeof(rectVertex) / sizeof(*rectVertex)) / coordsPerVertex;
+  int coordinatesPerVertex = 2;
+  int coordinatesPerTex = 2;
+  int vertexStride = coordinatesPerVertex * sizeof(float);
+  int texStride = coordinatesPerTex * sizeof(float);
+  int vertexCount = (sizeof(rectVertex) / sizeof(*rectVertex)) / coordinatesPerVertex;
   GLuint program = 0;
   GLuint vertexShader = 0;
   GLuint fragmentShader = 0;
