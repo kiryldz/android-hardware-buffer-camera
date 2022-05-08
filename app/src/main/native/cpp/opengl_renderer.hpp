@@ -93,31 +93,19 @@ private:
                                         "void main() {"
                                         " FragColor = texture(sExtSampler, vCoordinate);"
                                         "}";
-  float rectVertex[8] = {
-    -1.0f, -1.0f,
-    -1.0f, 1.0f,
-    1.0f, -1.0f,
-    1.0f, 1.0f
+  float vertexArray[16] = {
+    // positions    // texture coordinates
+    -1.0f, -1.0f,   0.0f, 0.0f,
+    -1.0f,  1.0f,   0.0f, 1.0f,
+     1.0f, -1.0f,   1.0f, 0.0f,
+     1.0f,  1.0f,   1.0f, 1.0f
   };
-  float rectTex[8] = {
-    0.0f, 0.0f,
-    0.0f, 1.0f,
-    1.0f, 0.0f,
-    1.0f, 1.0f
-  };
-  int coordinatesPerVertex = 2;
-  int coordinatesPerTex = 2;
-  int vertexStride = coordinatesPerVertex * sizeof(float);
-  int texStride = coordinatesPerTex * sizeof(float);
-  int vertexCount = (sizeof(rectVertex) / sizeof(*rectVertex)) / coordinatesPerVertex;
   GLuint program = 0;
   GLuint vertexShader = 0;
   GLuint fragmentShader = 0;
-  GLuint vbo[2];
-  GLuint attributePosition = 0;
-  GLuint attributeTextureCoord = 0;
+  GLuint vbo[1];
   GLint uniformMvp = 0;
-  GLint uniformSampler = 0;
+  GLint externalSampler = 0;
 
   float bufferImageRatio = 1.0f;
 
