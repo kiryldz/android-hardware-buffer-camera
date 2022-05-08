@@ -5,61 +5,6 @@ PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR = nullptr;
 PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR = nullptr;
 PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = nullptr;
 
-namespace {
-
-void doFrame(long, void* data) {
-  auto * renderer = reinterpret_cast<engine::android::OpenGLRenderer*>(data);
-  if (renderer->couldRender()) {
-    renderer->render();
-    // perform the check if aHwBufferQueue is not empty - then we need to catch up
-    AHardwareBuffer * aHardwareBuffer;
-    if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
-      LOGI("Catching up as some more buffers could be consumed!");
-      renderer->hwBufferToExternalTexture(aHardwareBuffer);
-    }
-  }
-}
-
-int looperCallback(int fd, int events, void* data) {
-  char buffer[9];
-  while (read(fd, buffer, sizeof(buffer)) > 0) {}
-//  LOGE("looperCallback fd=%i, events=%i, buffer=%s", fd, events, buffer);
-  auto * renderer = reinterpret_cast<engine::android::OpenGLRenderer*>(data);
-  if (std::string(buffer) == "setWindow") {
-    renderer->prepareEgl();
-    renderer->aChoreographer = AChoreographer_getInstance();
-    // posting next frame callback, no need to explicitly wake the looper afterwards
-    // as AChoreographer seems to operate with it's own fd and callbacks
-    AChoreographer_postFrameCallback(renderer->aChoreographer, doFrame, renderer);
-  } else if (std::string(buffer) == "destroy__") {
-    // TODO validate that fd is the correct one here
-    ALooper_removeFd(renderer->aLooper, fd);
-    if (close(renderer->fds[PIPE_IN]) || close(renderer->fds[PIPE_OUT])) {
-      throw std::runtime_error("Failed to close file descriptor!");
-    }
-    // explicit wake here in order to unblock ALooper_pollAll
-    ALooper_wake(renderer->aLooper);
-    ALooper_release(renderer->aLooper);
-    // returning 0 to have this file descriptor and callback unregistered from the looper
-    return 0;
-  } else if (std::string(buffer) == "updWinSiz") {
-    LOGI("update window size, width=%i, height=%i", renderer->viewportWidth, renderer->viewportHeight);
-    glClearColor(0.5, 0.5, 0.5, 0.5);
-    glViewport(0, 0, renderer->viewportWidth, renderer->viewportHeight);
-  } else if (std::string(buffer) == "resetWind") {
-    renderer->destroyEgl();
-    renderer->aNativeWindow = nullptr;
-  } else if (std::string(buffer) == "buffReady") {
-    AHardwareBuffer * aHardwareBuffer;
-    if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
-      renderer->hwBufferToExternalTexture(aHardwareBuffer);
-    }
-  }
-  // returning 1 to continue receiving callbacks
-  return 1;
-}
-}
-
 namespace engine {
 namespace android {
 
@@ -126,6 +71,7 @@ void checkCompileStatus(GLuint shader) {
 // OPENGL HELPER METHODS END
 
 OpenGLRenderer::OpenGLRenderer(): renderThread(std::thread(&OpenGLRenderer::eventLoop, this)) {
+  LOGI("OpenGLRenderer constructor");
 }
 
 OpenGLRenderer::~OpenGLRenderer() {
@@ -134,6 +80,58 @@ OpenGLRenderer::~OpenGLRenderer() {
   LOGI("OpenGLRenderer renderThread.join waiting");
   renderThread.join();
   LOGI("OpenGLRenderer render thread killed");
+}
+
+void OpenGLRenderer::doFrame(long, void* data) {
+  auto * renderer = reinterpret_cast<engine::android::OpenGLRenderer*>(data);
+  if (renderer->couldRender()) {
+    renderer->render();
+    // perform the check if aHwBufferQueue is not empty - then we need to catch up
+    AHardwareBuffer * aHardwareBuffer;
+    if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
+      LOGI("Catching up as some more buffers could be consumed!");
+      renderer->hwBufferToExternalTexture(aHardwareBuffer);
+    }
+  }
+}
+
+int OpenGLRenderer::looperCallback(int fd, int events, void* data) {
+  char buffer[9];
+  while (read(fd, buffer, sizeof(buffer)) > 0) {}
+//  LOGE("looperCallback fd=%i, events=%i, buffer=%s", fd, events, buffer);
+  auto * renderer = reinterpret_cast<engine::android::OpenGLRenderer*>(data);
+  if (std::string(buffer) == "setWindow") {
+    renderer->prepareEgl();
+    renderer->aChoreographer = AChoreographer_getInstance();
+    // posting next frame callback, no need to explicitly wake the looper afterwards
+    // as AChoreographer seems to operate with it's own fd and callbacks
+    AChoreographer_postFrameCallback(renderer->aChoreographer, doFrame, renderer);
+  } else if (std::string(buffer) == "destroy__") {
+    // TODO validate that fd is the correct one here
+    ALooper_removeFd(renderer->aLooper, fd);
+    if (close(renderer->fds[PIPE_IN]) || close(renderer->fds[PIPE_OUT])) {
+      throw std::runtime_error("Failed to close file descriptor!");
+    }
+    // explicit wake here in order to unblock ALooper_pollAll
+    ALooper_wake(renderer->aLooper);
+    ALooper_release(renderer->aLooper);
+    // returning 0 to have this file descriptor and callback unregistered from the looper
+    return 0;
+  } else if (std::string(buffer) == "updWinSiz") {
+    LOGI("update window size, width=%i, height=%i", renderer->viewportWidth, renderer->viewportHeight);
+    glClearColor(0.5, 0.5, 0.5, 0.5);
+    glViewport(0, 0, renderer->viewportWidth, renderer->viewportHeight);
+  } else if (std::string(buffer) == "resetWind") {
+    renderer->destroyEgl();
+    renderer->aNativeWindow = nullptr;
+  } else if (std::string(buffer) == "buffReady") {
+    AHardwareBuffer * aHardwareBuffer;
+    if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
+      renderer->hwBufferToExternalTexture(aHardwareBuffer);
+    }
+  }
+  // returning 1 to continue receiving callbacks
+  return 1;
 }
 
 void OpenGLRenderer::setWindow(ANativeWindow * window) {
@@ -289,8 +287,8 @@ bool OpenGLRenderer::prepareEgl()
   glLinkProgram(program);
   checkLinkStatus(program);
 
-  glGenTextures(1, &cameraBufTex);
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraBufTex);
+  glGenTextures(1, &cameraExternalTex);
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraExternalTex);
   glTexParameterf(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameterf(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
@@ -382,7 +380,7 @@ void OpenGLRenderer::render() {
   static auto mvp = proj * view;
   glUniformMatrix4fv(uniformMvp, 1, GL_FALSE, glm::value_ptr(mvp));
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraBufTex);
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraExternalTex);
   glUniform1i(externalSampler, 0);
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
   glDisableVertexAttribArray(0);
@@ -452,7 +450,7 @@ void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer
     EGL_NATIVE_BUFFER_ANDROID,
     eglGetNativeClientBufferANDROID(aHardwareBuffer),
     attrs);
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraBufTex);
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraExternalTex);
   glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, image);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
   // interesting - works OK destroying it here, before actual rendering
