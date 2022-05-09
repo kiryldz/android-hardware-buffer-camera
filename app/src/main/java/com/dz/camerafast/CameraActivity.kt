@@ -48,6 +48,11 @@ class CameraActivity : AppCompatActivity() {
         coreEngine.destroy()
     }
 
+    override fun onBackPressed() {
+        super.onBackPressed()
+        finish()
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -69,12 +74,19 @@ class CameraActivity : AppCompatActivity() {
             // Camera provider is now guaranteed to be available
             val cameraProvider = cameraProviderFuture.get()
 
-            // Set up the image analysis use case which will process frames in real time
+            // Set up the image analysis use case which will process frames in real time using dedicated thread
+
+            // We step away from official guidelines and use STRATEGY_BLOCK_PRODUCER as at least
+            // on Xiaomi Mi 9 STRATEGY_KEEP_ONLY_LATEST strategy proved to be non-efficient -
+            // we're using concurrent HW buffer queue in core where camera worker thread feeds buffers ASAP
+            // while core render thread pop them ASAP providing best balance as in some situations vendor
+            // camera implementation may produce more in short period of time followed by some delay when
+            // we catch up by popping the queue when we have a moment between VSYNC calls
             val imageAnalysis = ImageAnalysis.Builder()
                 .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_BLOCK_PRODUCER)
-                .setImageQueueDepth(3)
+                .setImageQueueDepth(CAMERA_IMAGE_QUEUE_DEPTH)
                 .build()
 
             imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
@@ -95,6 +107,7 @@ class CameraActivity : AppCompatActivity() {
 
             // Apply declared configs to CameraX using the same lifecycle owner
             cameraProvider.unbindAll()
+            // Note: we do not setup ANY preview options as all the drawing will be done by us
             cameraProvider.bindToLifecycle(
                 this as LifecycleOwner, cameraSelector, imageAnalysis
             )
@@ -108,6 +121,8 @@ class CameraActivity : AppCompatActivity() {
     }
 
     private companion object {
-        private val TAG = "CameraKotlin"
+        private val TAG = "DzCamera"
+        // Not making buffer too big as it may bring in latency, 3 seems to be pretty balanced
+        private const val CAMERA_IMAGE_QUEUE_DEPTH = 3
     }
 }

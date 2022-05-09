@@ -70,15 +70,39 @@ void checkCompileStatus(GLuint shader) {
 
 // OPENGL HELPER METHODS END
 
-OpenGLRenderer::OpenGLRenderer(): renderThread(std::thread(&OpenGLRenderer::eventLoop, this)) {
+OpenGLRenderer::OpenGLRenderer(): renderThread(std::make_unique<LooperThread>()) {
   LOGI("OpenGLRenderer constructor");
+  taskSetAndroidWindow = renderThread->registerTask([this] {
+    const auto eglOK = prepareEgl();
+    if (eglOK) {
+      aChoreographer = AChoreographer_getInstance();
+      // posting next frame callback, no need to explicitly wake the looper afterwards
+      // as AChoreographer seems to operate with it's own fd and callbacks
+      AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
+    }
+    eglInitialized.notify_one();
+  });
+  taskUpdateAndroidWindowSize = renderThread->registerTask([this] {
+    LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
+    glClearColor(0.5, 0.5, 0.5, 0.5);
+    glViewport(0, 0, viewportWidth, viewportHeight);
+  });
+  taskResetAndroidWindow = renderThread->registerTask([this] {
+    destroyEgl();
+    aNativeWindow = nullptr;
+    eglDestroyed.notify_one();
+  });
+  taskOnNewHwBuffer = renderThread->registerTask([this] {
+    AHardwareBuffer * aHardwareBuffer;
+    if (aHwBufferQueue.try_pop(aHardwareBuffer)) {
+      hwBufferToExternalTexture(aHardwareBuffer);
+    }
+  });
 }
 
 OpenGLRenderer::~OpenGLRenderer() {
   LOGI("OpenGLRenderer destructor");
-  write(fds[PIPE_IN], "destroy__", 9);
-  LOGI("OpenGLRenderer renderThread.join waiting");
-  renderThread.join();
+  renderThread.reset();
   LOGI("OpenGLRenderer render thread killed");
 }
 
@@ -95,71 +119,30 @@ void OpenGLRenderer::doFrame(long, void* data) {
   }
 }
 
-int OpenGLRenderer::looperCallback(int fd, int events, void* data) {
-  char buffer[9];
-  while (read(fd, buffer, sizeof(buffer)) > 0) {}
-//  LOGE("looperCallback fd=%i, events=%i, buffer=%s", fd, events, buffer);
-  auto * renderer = reinterpret_cast<engine::android::OpenGLRenderer*>(data);
-  if (std::string(buffer) == "setWindow") {
-    renderer->prepareEgl();
-    renderer->aChoreographer = AChoreographer_getInstance();
-    // posting next frame callback, no need to explicitly wake the looper afterwards
-    // as AChoreographer seems to operate with it's own fd and callbacks
-    AChoreographer_postFrameCallback(renderer->aChoreographer, doFrame, renderer);
-  } else if (std::string(buffer) == "destroy__") {
-    // TODO validate that fd is the correct one here
-    ALooper_removeFd(renderer->aLooper, fd);
-    if (close(renderer->fds[PIPE_IN]) || close(renderer->fds[PIPE_OUT])) {
-      throw std::runtime_error("Failed to close file descriptor!");
-    }
-    // explicit wake here in order to unblock ALooper_pollAll
-    ALooper_wake(renderer->aLooper);
-    ALooper_release(renderer->aLooper);
-    // returning 0 to have this file descriptor and callback unregistered from the looper
-    return 0;
-  } else if (std::string(buffer) == "updWinSiz") {
-    LOGI("update window size, width=%i, height=%i", renderer->viewportWidth, renderer->viewportHeight);
-    glClearColor(0.5, 0.5, 0.5, 0.5);
-    glViewport(0, 0, renderer->viewportWidth, renderer->viewportHeight);
-  } else if (std::string(buffer) == "resetWind") {
-    renderer->destroyEgl();
-    renderer->aNativeWindow = nullptr;
-  } else if (std::string(buffer) == "buffReady") {
-    AHardwareBuffer * aHardwareBuffer;
-    if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
-      renderer->hwBufferToExternalTexture(aHardwareBuffer);
-    }
-  }
-  // returning 1 to continue receiving callbacks
-  return 1;
-}
-
 void OpenGLRenderer::setWindow(ANativeWindow * window) {
-  // TODO for sure refactor for something more elegant, perhaps move thread with looper to another class
   std::unique_lock<std::mutex> lock(eglMutex);
   aNativeWindow = window;
   // schedule an event to the render thread
-  write(fds[PIPE_IN], "setWindow", 9);
-  LOGI("setWindow waiting for context creation...");
+  renderThread->scheduleTask(taskSetAndroidWindow);
+  LOGI("New Android surface arrived, waiting for OpenGL context creation...");
   eglInitialized.wait(lock);
-  LOGI("setWindow resume main thread");
+  LOGI("New Android surface processed, resuming main thread!");
 }
 
 void OpenGLRenderer::updateWindowSize(int width, int height) {
-  // schedule an event to the render thread
-  write(fds[PIPE_IN], "updWinSiz", 9);
   // TODO not safe as those are also assigned from render thread - pass them to render thread somehow
   viewportWidth = width;
   viewportHeight = height;
+  // schedule an event to the render thread
+  renderThread->scheduleTask(taskUpdateAndroidWindowSize);
 }
 
 void OpenGLRenderer::resetWindow() {
   std::unique_lock<std::mutex> lock(eglMutex);
-  LOGI("resetWindow");
-  write(fds[PIPE_IN], "resetWind", 9);
-  LOGI("resetWindow waiting for destroying EGL...");
+  renderThread->scheduleTask(taskResetAndroidWindow);
+  LOGI("Android surface destroyed, waiting until EGL will be destroyed...");
   eglDestroyed.wait(lock);
-  LOGI("resetWindow resume main thread");
+  LOGI("Android surface destroyed, resuming main thread!");
 }
 
 bool OpenGLRenderer::couldRender() const {
@@ -314,13 +297,12 @@ bool OpenGLRenderer::prepareEgl()
        stringFromError(glGetError()),
        glGetString(GL_VERSION)
   );
-  eglPrepared = true;
   // make sure that if we resume - buffer does not contain outdated frames so pop and release them
   AHardwareBuffer * aHardwareBuffer;
   while (aHwBufferQueue.try_pop(aHardwareBuffer)) {
     AHardwareBuffer_release(aHardwareBuffer);
   }
-  eglInitialized.notify_one();
+  eglPrepared = true;
   return true;
 }
 
@@ -334,9 +316,8 @@ void OpenGLRenderer::destroyEgl() {
   eglSurface = EGL_NO_SURFACE;
   eglContext = EGL_NO_CONTEXT;
   eglReleaseThread();
-  LOGI("EGL destroyed!");
   eglPrepared = false;
-  eglDestroyed.notify_one();
+  LOGI("EGL destroyed!");
 }
 
 void OpenGLRenderer::render() {
@@ -394,33 +375,6 @@ void OpenGLRenderer::render() {
   }
 }
 
-void OpenGLRenderer::eventLoop() {
-  // in order to use AChoreographer for effective rendering
-  // and allow scheduling events in general we prepare and acquire the ALooper
-  aLooper = ALooper_prepare(0);
-  assert(aLooper);
-  ALooper_acquire(aLooper);
-  if (pipe2(fds, O_CLOEXEC)) {
-    throw std::runtime_error("Failed to create pipe needed for the ALooper");
-  }
-  // TODO understand if this is really required
-  if (fcntl(fds[PIPE_OUT], F_SETFL, O_NONBLOCK)) {
-    throw std::runtime_error("Failed to set pipe read end non-blocking.");
-  }
-  auto ret = ALooper_addFd(aLooper, fds[PIPE_OUT], ALOOPER_POLL_CALLBACK,
-                      ALOOPER_EVENT_INPUT, looperCallback, this);
-  if (ret != 1) {
-    throw std::runtime_error("Failed to add file descriptor to Looper.");
-  }
-
-  int outFd, outEvents;
-  char *outData = nullptr;
-
-  // using negative timeout and block poll forever
-  // we will be using poll callbacks to schedule events and not make use of ALooper_wake() at all unless we want to exit the thread
-  ALooper_pollAll(-1, &outFd, &outEvents, reinterpret_cast<void**>(&outData));
-}
-
 void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer) {
   if (!hardwareBufferDescribed) {
     AHardwareBuffer_Desc description;
@@ -430,8 +384,8 @@ void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer) {
   // it seems that there's no leak even if we do not explicitly acquire / release but guess better do that
   AHardwareBuffer_acquire(aHardwareBuffer);
   aHwBufferQueue.push(aHardwareBuffer);
-  LOGI("feed new hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
-  write(fds[PIPE_IN], "buffReady", 9);
+  LOGI("Feed new hardware buffer, size %u", aHwBufferQueue.unsafe_size());
+  renderThread->scheduleTask(taskOnNewHwBuffer);
 }
 
 void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer) {
@@ -440,7 +394,7 @@ void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer
   // first thing post another doFrame callback as we will need to render this texture
   AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
   static EGLint attrs[] = { EGL_NONE };
-  LOGI("drain hardware buffer, size %ui", aHwBufferQueue.unsafe_size());
+  LOGI("Pop hardware buffer, size %u", aHwBufferQueue.unsafe_size());
   EGLImageKHR image = eglCreateImageKHR(
     eglDisplay,
     // a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
@@ -457,7 +411,7 @@ void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer
   eglDestroyImageKHR(eglDisplay, image);
   // still not precisely clear - if AHardwareBuffer is 'shared' memory -
   // releasing it here should lead to missing texture data when drawing
-  // but it works as expected if we do release memory here
+  // but it works as expected if we do release memory here, so OK
   AHardwareBuffer_release(aHardwareBuffer);
   if (!hardwareBufferDescribed) {
     hardwareBufferDescribed = true;

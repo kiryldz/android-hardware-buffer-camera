@@ -57,6 +57,6 @@ class CoreEngine(
     protected external fun finalize()
 
     private companion object {
-        private const val TAG = "CoreEngineKotlin"
+        private const val TAG = "DzCoreKotlin"
     }
 }

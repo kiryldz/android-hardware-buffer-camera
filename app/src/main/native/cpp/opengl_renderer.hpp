@@ -1,6 +1,5 @@
 #pragma once
 
-#include <android/looper.h>
 #include <android/choreographer.h>
 #include <android/hardware_buffer.h>
 #include <android/native_window.h>
@@ -18,10 +17,7 @@
 
 #include <tbb/concurrent_queue.h>
 
-#include <fcntl.h>
-#include <thread>
-#include <unistd.h>
-
+#include "looper_thread.hpp"
 #include "util.hpp"
 
 namespace engine {
@@ -93,7 +89,11 @@ private:
 
   ///////// Threads and threading
 
-  std::thread renderThread;
+  std::unique_ptr<LooperThread> renderThread;
+  uint8_t taskSetAndroidWindow;
+  uint8_t taskUpdateAndroidWindowSize;
+  uint8_t taskResetAndroidWindow;
+  uint8_t taskOnNewHwBuffer;
   std::mutex eglMutex;
   std::condition_variable eglInitialized;
   std::condition_variable eglDestroyed;
@@ -105,10 +105,8 @@ private:
   ///////// Variables
 
   AChoreographer * aChoreographer = nullptr;
-  ALooper * aLooper = nullptr;
   ANativeWindow * aNativeWindow = nullptr;
 
-  int fds[2];
   int viewportWidth = -1;
   int viewportHeight = -1;
   volatile bool hardwareBufferDescribed = false;
@@ -117,7 +115,6 @@ private:
 
   ///////// Functions
 
-  void eventLoop();
   bool couldRender() const;
   void render();
   bool prepareEgl();
@@ -132,7 +129,6 @@ private:
   ///////// Callbacks for AChoreographer and ALooper stored as private static functions
 
   static void doFrame(long timeStampNanos, void* data);
-  static int looperCallback(int fd, int events, void* data);
 };
 
 } // namespace android
