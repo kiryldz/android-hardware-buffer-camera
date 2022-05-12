@@ -90,10 +90,6 @@ private:
   ///////// Threads and threading
 
   std::unique_ptr<LooperThread> renderThread;
-  uint8_t taskSetAndroidWindow;
-  uint8_t taskUpdateAndroidWindowSize;
-  uint8_t taskResetAndroidWindow;
-  uint8_t taskOnNewHwBuffer;
   std::mutex eglMutex;
   std::condition_variable eglInitialized;
   std::condition_variable eglDestroyed;

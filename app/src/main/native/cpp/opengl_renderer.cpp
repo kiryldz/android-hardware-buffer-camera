@@ -72,38 +72,12 @@ void checkCompileStatus(GLuint shader) {
 
 OpenGLRenderer::OpenGLRenderer(): renderThread(std::make_unique<LooperThread>()) {
   LOGI("OpenGLRenderer constructor");
-  taskSetAndroidWindow = renderThread->registerTask([this] {
-    const auto eglOK = prepareEgl();
-    if (eglOK) {
-      aChoreographer = AChoreographer_getInstance();
-      // posting next frame callback, no need to explicitly wake the looper afterwards
-      // as AChoreographer seems to operate with it's own fd and callbacks
-      AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
-    }
-    eglInitialized.notify_one();
-  });
-  taskUpdateAndroidWindowSize = renderThread->registerTask([this] {
-    LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
-    glClearColor(0.5, 0.5, 0.5, 0.5);
-    glViewport(0, 0, viewportWidth, viewportHeight);
-  });
-  taskResetAndroidWindow = renderThread->registerTask([this] {
-    destroyEgl();
-    aNativeWindow = nullptr;
-    eglDestroyed.notify_one();
-  });
-  taskOnNewHwBuffer = renderThread->registerTask([this] {
-    AHardwareBuffer * aHardwareBuffer;
-    if (aHwBufferQueue.try_pop(aHardwareBuffer)) {
-      hwBufferToExternalTexture(aHardwareBuffer);
-    }
-  });
 }
 
 OpenGLRenderer::~OpenGLRenderer() {
   LOGI("OpenGLRenderer destructor");
   renderThread.reset();
-  LOGI("OpenGLRenderer render thread killed");
+  LOGI("OpenGLRenderer destructor, confirm that render thread killed!");
 }
 
 void OpenGLRenderer::doFrame(long, void* data) {
@@ -123,23 +97,39 @@ void OpenGLRenderer::setWindow(ANativeWindow * window) {
   std::unique_lock<std::mutex> lock(eglMutex);
   aNativeWindow = window;
   // schedule an event to the render thread
-  renderThread->scheduleTask(taskSetAndroidWindow);
+  renderThread->scheduleTask([this] {
+    const auto eglOK = prepareEgl();
+    if (eglOK) {
+      aChoreographer = AChoreographer_getInstance();
+      // posting next frame callback, no need to explicitly wake the looper afterwards
+      // as AChoreographer seems to operate with it's own fd and callbacks
+      AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
+    }
+    eglInitialized.notify_one();
+  });
   LOGI("New Android surface arrived, waiting for OpenGL context creation...");
   eglInitialized.wait(lock);
   LOGI("New Android surface processed, resuming main thread!");
 }
 
 void OpenGLRenderer::updateWindowSize(int width, int height) {
-  // TODO not safe as those are also assigned from render thread - pass them to render thread somehow
-  viewportWidth = width;
-  viewportHeight = height;
   // schedule an event to the render thread
-  renderThread->scheduleTask(taskUpdateAndroidWindowSize);
+  renderThread->scheduleTask([this, width, height] {
+    viewportWidth = width;
+    viewportHeight = height;
+    LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
+    glClearColor(0.5, 0.5, 0.5, 0.5);
+    glViewport(0, 0, viewportWidth, viewportHeight);
+  });
 }
 
 void OpenGLRenderer::resetWindow() {
   std::unique_lock<std::mutex> lock(eglMutex);
-  renderThread->scheduleTask(taskResetAndroidWindow);
+  renderThread->scheduleTask([this] {
+    destroyEgl();
+    aNativeWindow = nullptr;
+    eglDestroyed.notify_one();
+  });
   LOGI("Android surface destroyed, waiting until EGL will be destroyed...");
   eglDestroyed.wait(lock);
   LOGI("Android surface destroyed, resuming main thread!");
@@ -385,7 +375,12 @@ void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer) {
   AHardwareBuffer_acquire(aHardwareBuffer);
   aHwBufferQueue.push(aHardwareBuffer);
   LOGI("Feed new hardware buffer, size %u", aHwBufferQueue.unsafe_size());
-  renderThread->scheduleTask(taskOnNewHwBuffer);
+  renderThread->scheduleTask([this] {
+    AHardwareBuffer * aHardwareBuffer;
+    if (aHwBufferQueue.try_pop(aHardwareBuffer)) {
+      hwBufferToExternalTexture(aHardwareBuffer);
+    }
+  });
 }
 
 void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer) {
