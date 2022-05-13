@@ -21,7 +21,7 @@ LooperThread::~LooperThread() {
   });
   thread.join();
   LOGI("LooperThread destructor, thread killed!");
-  methodMap.clear();
+  taskMap.clear();
 }
 
 void LooperThread::eventLoop() {
@@ -56,24 +56,23 @@ int LooperThread::looperCallback(int fd, int events, void * data) {
     LOGW("Handling more than one event is not implemented and "
          "should not happen in current implementation. Only one event will be processed.");
   }
-  char buffer[sizeof(uintptr_t)];
-  while (read(fd, buffer, sizeof(uintptr_t)) > 0) {}
-  auto taskId = *reinterpret_cast<uintptr_t*>(buffer);
+  uintptr_t taskId;
+  while (read(fd, &taskId, sizeof(taskId)) > 0) {}
   auto * looperThread = reinterpret_cast<LooperThread*>(data);
-  static tbb::concurrent_hash_map<uintptr_t, std::function<void()>>::accessor ac;
-  if (looperThread->methodMap.find(ac, taskId)) {
+  Accessor ac;
+  if (looperThread->taskMap.find(ac, taskId)) {
     ac->second();
-    looperThread->methodMap.erase(ac);
+    looperThread->taskMap.erase(ac);
   }
   ac.release();
   return 1;
 }
 
-void LooperThread::scheduleTask(const std::function<void()>& function) {
-  auto key = reinterpret_cast<uintptr_t>(&function);
-  static tbb::concurrent_hash_map<uintptr_t, std::function<void()>>::accessor ac;
-  methodMap.insert(ac, key);
-  ac->second = function;
+void LooperThread::scheduleTask(const Task& task) {
+  auto key = reinterpret_cast<uintptr_t>(&task);
+  Accessor ac;
+  taskMap.insert(ac, key);
+  ac->second = task;
   ac.release();
   write(fds[PIPE_IN], &key, sizeof(uintptr_t));
 }
