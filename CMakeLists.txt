@@ -13,6 +13,8 @@ add_library(
         app/src/main/native/cpp/core_engine.cpp
         app/src/main/native/cpp/opengl_renderer.cpp
         app/src/main/native/cpp/looper_thread.cpp
+        app/src/main/native/cpp/run_loop.cpp
+        app/src/main/native/cpp/run_loop.hpp
 )
 
 add_subdirectory(vendor/glm)
