@@ -3,8 +3,22 @@
 namespace engine {
 namespace android {
 
-CoreEngine::CoreEngine(JNIEnv & env): aNativeWindow(nullptr), openGlRenderer(std::make_unique<OpenGLRenderer>()) {
-  LOGI("Core engine created");
+CoreEngine::CoreEngine(JNIEnv & env, jni::jint renderingMode): aNativeWindow(nullptr) {
+  switch (renderingMode) {
+    case 0: {
+      LOGI("Using OpenGL ES renderer");
+      renderer = std::make_unique<OpenGLRenderer>();
+      break;
+    }
+    case 1: {
+      LOGI("Using Vulkan renderer");
+      renderer = std::make_unique<VulkanRenderer>();
+      break;
+    }
+    default: {
+
+    }
+  }
 }
 
 CoreEngine::~CoreEngine() = default;
@@ -16,13 +30,13 @@ void CoreEngine::nativeSetSurface(JNIEnv & env, const jni::Object <Surface> & su
     if (nativeWindow != aNativeWindow) {
       aNativeWindow = nativeWindow;
       ANativeWindow_acquire(aNativeWindow);
-      openGlRenderer->setWindow(nativeWindow);
+      renderer->setWindow(nativeWindow);
     }
     if (nativeWindow) {
-      openGlRenderer->updateWindowSize(width, height);
+      renderer->updateWindowSize(width, height);
     }
   } else {
-    openGlRenderer->resetWindow();
+    renderer->resetWindow();
     ANativeWindow_release(aNativeWindow);
     aNativeWindow = nullptr;
   }
@@ -30,12 +44,17 @@ void CoreEngine::nativeSetSurface(JNIEnv & env, const jni::Object <Surface> & su
 
 /** called from worker thread **/
 void CoreEngine::nativeFeedHardwareBuffer(JNIEnv & env, const jni::Object <HardwareBuffer> & buffer) {
-  openGlRenderer->feedHardwareBuffer(AHardwareBuffer_fromHardwareBuffer(&env, jni::Unwrap(*buffer.get())));
+    renderer->feedHardwareBuffer(AHardwareBuffer_fromHardwareBuffer(&env, jni::Unwrap(*buffer.get())));
+}
+
+void CoreEngine::nativeSetRenderingMode(JNIEnv &env, jni::jint mode) {
+  // TODO lock needed cause nativeFeedHardwareBuffer is called from another thread
+  // TODO implement
 }
 
 void CoreEngine::nativeDestroy(JNIEnv & env) {
   LOGI("Core engine destroy started");
-  openGlRenderer.reset();
+  renderer.reset();
   LOGI("Core engine destroy passed");
 }
 

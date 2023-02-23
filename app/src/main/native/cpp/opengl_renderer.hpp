@@ -1,9 +1,6 @@
 #pragma once
 
 #include <android/choreographer.h>
-#include <android/hardware_buffer.h>
-#include <android/native_window.h>
-#include <android/native_window_jni.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -17,28 +14,22 @@
 
 #include <tbb/concurrent_queue.h>
 
+#include "base_renderer.hpp"
 #include "looper_thread.hpp"
 #include "util.hpp"
 
 namespace engine {
 namespace android {
 
-#define PIPE_OUT 0
-#define PIPE_IN  1
-
-class OpenGLRenderer {
+class OpenGLRenderer : public BaseRenderer {
 public:
   OpenGLRenderer();
   ~OpenGLRenderer();
 
-  void setWindow(ANativeWindow * window);
-  void updateWindowSize(int width, int height);
-  void resetWindow();
-  /**
-   * Always called from camera worker thread - feed new camera buffer.
-   * @param aHardwareBuffer
-   */
-  void feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer);
+  void setWindow(ANativeWindow *window) override;
+  void updateWindowSize(int width, int height) override;
+  void resetWindow() override;
+  void feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer) override;
 
 private:
   ///////// OpenGL

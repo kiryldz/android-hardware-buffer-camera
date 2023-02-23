@@ -7,6 +7,7 @@
 #include <jni/jni.hpp>
 
 #include "opengl_renderer.hpp"
+#include "vulkan_renderer.hpp"
 #include "util.hpp"
 
 namespace engine {
@@ -35,16 +36,17 @@ public:
       env,
       jni::Class<CoreEngine>::Find(env),
       "peer",
-      jni::MakePeer<CoreEngine>,
+      jni::MakePeer<CoreEngine, jni::jint>,
       "initialize",
       "finalize",
       METHOD(&CoreEngine::nativeSetSurface, "nativeSetSurface"),
+      METHOD(&CoreEngine::nativeSetRenderingMode, "nativeSetRenderingMode"),
       METHOD(&CoreEngine::nativeFeedHardwareBuffer, "nativeFeedHardwareBuffer"),
       METHOD(&CoreEngine::nativeDestroy, "nativeDestroy")
     );
   }
 
-  CoreEngine(JNIEnv & env);
+  CoreEngine(JNIEnv & env, jni::jint renderingMode);
   CoreEngine(CoreEngine const &) = delete;
   ~CoreEngine();
 
@@ -52,12 +54,13 @@ public:
 
   void nativeFeedHardwareBuffer(JNIEnv & env, jni::Object<HardwareBuffer> const & buffer);
 
+  void nativeSetRenderingMode(JNIEnv & env, jni::jint mode);
+
   void nativeDestroy(JNIEnv & env);
 
 private:
   ANativeWindow * aNativeWindow;
-  std::unique_ptr<OpenGLRenderer> openGlRenderer;
-
+  std::unique_ptr<BaseRenderer> renderer;
 };
 
 } // namespace android
