@@ -1,5 +1,8 @@
 #pragma once
 
+#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_android.h>
+
 #include "base_renderer.hpp"
 
 namespace engine {
@@ -7,14 +10,33 @@ namespace android {
 
 class VulkanRenderer : public BaseRenderer {
 
-public:
-    VulkanRenderer();
-    ~VulkanRenderer();
+protected:
+const char* renderingModeName() override {
+    return (const char*) "Vulkan";
+}
 
-    void setWindow(ANativeWindow *window) override;
-    void updateWindowSize(int width, int height) override;
-    void resetWindow() override;
-    void feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer) override;
+bool onWindowCreated() override {
+    return true;
+}
+
+void onWindowSizeUpdated(int width, int height) override {
+
+}
+
+void onWindowDestroyed() override {
+
+}
+
+void hwBufferToTexture(AHardwareBuffer *buffer) override {
+
+}
+
+void postChoreographerCallback() override {
+
+}
+
+private:
+
 };
 
 } // namespace android
