@@ -70,16 +70,6 @@ void checkCompileStatus(GLuint shader) {
 
 // OPENGL HELPER METHODS END
 
-OpenGLRenderer::OpenGLRenderer(): renderThread(std::make_unique<LooperThread>()) {
-  LOGI("OpenGLRenderer constructor");
-}
-
-OpenGLRenderer::~OpenGLRenderer() {
-  LOGI("OpenGLRenderer destructor");
-  renderThread.reset();
-  LOGI("OpenGLRenderer destructor, confirm that render thread killed!");
-}
-
 void OpenGLRenderer::doFrame(long, void* data) {
   auto * renderer = reinterpret_cast<engine::android::OpenGLRenderer*>(data);
   if (renderer->couldRender()) {
@@ -91,48 +81,6 @@ void OpenGLRenderer::doFrame(long, void* data) {
       renderer->hwBufferToExternalTexture(aHardwareBuffer);
     }
   }
-}
-
-void OpenGLRenderer::setWindow(ANativeWindow * window) {
-  std::unique_lock<std::mutex> lock(eglMutex);
-  aNativeWindow = window;
-  // schedule an event to the render thread
-  renderThread->scheduleTask([this] {
-    const auto eglOK = prepareEgl();
-    if (eglOK) {
-      aChoreographer = AChoreographer_getInstance();
-      // posting next frame callback, no need to explicitly wake the looper afterwards
-      // as AChoreographer seems to operate with it's own fd and callbacks
-      AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
-    }
-    eglInitialized.notify_one();
-  });
-  LOGI("New Android surface arrived, waiting for OpenGL context creation...");
-  eglInitialized.wait(lock);
-  LOGI("New Android surface processed, resuming main thread!");
-}
-
-void OpenGLRenderer::updateWindowSize(int width, int height) {
-  // schedule an event to the render thread
-  renderThread->scheduleTask([this, width, height] {
-    viewportWidth = width;
-    viewportHeight = height;
-    LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
-    glClearColor(0.5, 0.5, 0.5, 0.5);
-    glViewport(0, 0, viewportWidth, viewportHeight);
-  });
-}
-
-void OpenGLRenderer::resetWindow() {
-  std::unique_lock<std::mutex> lock(eglMutex);
-  renderThread->scheduleTask([this] {
-    destroyEgl();
-    aNativeWindow = nullptr;
-    eglDestroyed.notify_one();
-  });
-  LOGI("Android surface destroyed, waiting until EGL will be destroyed...");
-  eglDestroyed.wait(lock);
-  LOGI("Android surface destroyed, resuming main thread!");
 }
 
 bool OpenGLRenderer::couldRender() const {
@@ -363,24 +311,6 @@ void OpenGLRenderer::render() {
   } else {
     LOGI("Swapped buffers!");
   }
-}
-
-void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer) {
-  if (!hardwareBufferDescribed) {
-    AHardwareBuffer_Desc description;
-    AHardwareBuffer_describe(aHardwareBuffer, &description);
-    bufferImageRatio = static_cast<float>(description.width) / static_cast<float>(description.height);
-  }
-  // it seems that there's no leak even if we do not explicitly acquire / release but guess better do that
-  AHardwareBuffer_acquire(aHardwareBuffer);
-  aHwBufferQueue.push(aHardwareBuffer);
-  LOGI("Feed new hardware buffer, size %u", aHwBufferQueue.unsafe_size());
-  renderThread->scheduleTask([this] {
-    AHardwareBuffer * aHardwareBuffer;
-    if (aHwBufferQueue.try_pop(aHardwareBuffer)) {
-      hwBufferToExternalTexture(aHardwareBuffer);
-    }
-  });
 }
 
 void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer) {

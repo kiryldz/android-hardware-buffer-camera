@@ -1,8 +1,14 @@
 #pragma once
 
+#include <android/choreographer.h>
 #include <android/hardware_buffer.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
+
+#include <tbb/concurrent_queue.h>
+
+#include "looper_thread.hpp"
+#include "util.hpp"
 
 namespace engine {
 namespace android {
@@ -10,14 +16,45 @@ namespace android {
 class BaseRenderer {
 
 public:
-  virtual void setWindow(ANativeWindow * window) = 0;
-  virtual void updateWindowSize(int width, int height) = 0;
-  virtual void resetWindow() = 0;
+  BaseRenderer();
+  ~BaseRenderer();
+  void setWindow(ANativeWindow * window);
+  void updateWindowSize(int width, int height);
+  void resetWindow();
   /**
    * Always called from camera worker thread - feed new camera buffer.
    * @param aHardwareBuffer
    */
-  virtual void feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer) = 0;
+  void feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer);
+
+protected:
+  virtual const char* renderingModeName() = 0;
+  virtual bool onWindowCreated() = 0;
+  virtual void onWindowDestroyed() = 0;
+  virtual void onWindowSizeUpdated(int width, int height) = 0;
+  virtual void hwBufferToTexture(AHardwareBuffer* buffer) = 0;
+
+  // TODO need another function as real function is static and could not be moved to base class,
+  //  perhaps could be done better
+  virtual void postChoreographerCallback() = 0;
+
+  AChoreographer * aChoreographer = nullptr;
+  ANativeWindow * aNativeWindow = nullptr;
+  int viewportWidth = -1;
+  int viewportHeight = -1;
+  volatile bool hardwareBufferDescribed = false;
+  float bufferImageRatio = 1.0f;
+
+  /**
+   * Concurrent queue needed as worker camera thread produces buffers while render thread consumes them.
+   */
+  tbb::concurrent_queue<AHardwareBuffer*> aHwBufferQueue;
+
+private:
+  std::unique_ptr<LooperThread> renderThread;
+  std::mutex mutex;
+  std::condition_variable initCondition;
+  std::condition_variable destroyCondition;
 };
 
 } // namespace android

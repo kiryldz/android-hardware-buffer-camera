@@ -1,7 +1,5 @@
 #pragma once
 
-#include <android/choreographer.h>
-
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
@@ -12,24 +10,40 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <tbb/concurrent_queue.h>
-
 #include "base_renderer.hpp"
-#include "looper_thread.hpp"
-#include "util.hpp"
 
 namespace engine {
 namespace android {
 
 class OpenGLRenderer : public BaseRenderer {
-public:
-  OpenGLRenderer();
-  ~OpenGLRenderer();
 
-  void setWindow(ANativeWindow *window) override;
-  void updateWindowSize(int width, int height) override;
-  void resetWindow() override;
-  void feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer) override;
+protected:
+  const char* renderingModeName() override {
+    return (const char*) "OpenGL ES";
+  }
+
+  bool onWindowCreated() override {
+    return prepareEgl();
+  }
+
+  void onWindowSizeUpdated(int width, int height) override {
+    glClearColor(0.5, 0.5, 0.5, 0.5);
+    glViewport(0, 0, width, height);
+  }
+
+  void onWindowDestroyed() override {
+    destroyEgl();
+  }
+
+  void hwBufferToTexture(AHardwareBuffer *buffer) override {
+    hwBufferToExternalTexture(buffer);
+  }
+
+  void postChoreographerCallback() override {
+    // posting next frame callback, no need to explicitly wake the looper afterwards
+    // as AChoreographer seems to operate with it's own fd and callbacks
+    AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
+  }
 
 private:
   ///////// OpenGL
@@ -78,27 +92,9 @@ private:
   EGLContext eglContext;
   EGLSurface eglSurface;
 
-  ///////// Threads and threading
-
-  std::unique_ptr<LooperThread> renderThread;
-  std::mutex eglMutex;
-  std::condition_variable eglInitialized;
-  std::condition_variable eglDestroyed;
-  /**
-   * Concurrent queue needed as worker camera thread produces buffers while render thread consumes them.
-   */
-  tbb::concurrent_queue<AHardwareBuffer*> aHwBufferQueue;
-
   ///////// Variables
 
-  AChoreographer * aChoreographer = nullptr;
-  ANativeWindow * aNativeWindow = nullptr;
-
-  int viewportWidth = -1;
-  int viewportHeight = -1;
-  volatile bool hardwareBufferDescribed = false;
   volatile bool eglPrepared = false;
-  float bufferImageRatio = 1.0f;
 
   ///////// Functions
 

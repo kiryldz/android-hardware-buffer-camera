@@ -33,7 +33,7 @@ class CameraActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         coreEngine = CoreEngine(
             surfaceHolder = findViewById<SurfaceView>(R.id.surface_view).holder,
-            renderingMode = RenderingMode.VULKAN,
+            renderingMode = RenderingMode.OPEN_GL_ES,
         )
     }
 
