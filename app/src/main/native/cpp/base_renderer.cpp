@@ -67,6 +67,8 @@ void BaseRenderer::feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer) {
       AHardwareBuffer * aHardwareBuffer;
       if (aHwBufferQueue.try_pop(aHardwareBuffer)) {
         hwBufferToTexture(aHardwareBuffer);
+        // post choreographer callback as we will need to render this texture
+        postChoreographerCallback();
       }
   });
 }

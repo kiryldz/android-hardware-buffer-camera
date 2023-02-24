@@ -38,8 +38,9 @@ protected:
   //  perhaps could be done better
   virtual void postChoreographerCallback() = 0;
 
-  AChoreographer * aChoreographer = nullptr;
   ANativeWindow * aNativeWindow = nullptr;
+  AChoreographer * aChoreographer = nullptr;
+
   int viewportWidth = -1;
   int viewportHeight = -1;
   volatile bool hardwareBufferDescribed = false;
