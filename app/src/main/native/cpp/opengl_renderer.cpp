@@ -316,8 +316,6 @@ void OpenGLRenderer::render() {
 void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer) {
   // EGL could have already be destroyed beforehand
   if (!eglPrepared) return;
-  // first thing post another doFrame callback as we will need to render this texture
-  AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
   static EGLint attrs[] = { EGL_NONE };
   LOGI("Pop hardware buffer, size %u", aHwBufferQueue.unsafe_size());
   EGLImageKHR image = eglCreateImageKHR(
