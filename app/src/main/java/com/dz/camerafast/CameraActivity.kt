@@ -28,7 +28,10 @@ class CameraActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        coreEngine = CoreEngine(findViewById<SurfaceView>(R.id.surface_view).holder)
+        coreEngine = CoreEngine(
+            surfaceHolder = findViewById<SurfaceView>(R.id.surface_view).holder,
+            renderingMode = RenderingMode.VULKAN,
+        )
     }
 
     override fun onResume() {
@@ -90,14 +93,14 @@ class CameraActivity : AppCompatActivity() {
                 .build()
 
             imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
-                Log.i(TAG, "New image arrived!")
+//                Log.i(TAG, "New image arrived!")
                 imageProxy.image?.hardwareBuffer?.let { buffer ->
                     coreEngine.feedHardwareBuffer(buffer)
                     buffer.close()
-                    Log.i(TAG, "Buffer fed and closed in Java!")
+//                    Log.i(TAG, "Buffer fed and closed in Java!")
                 }
                 imageProxy.close()
-                Log.i(TAG, "Image closed!")
+//                Log.i(TAG, "Image closed!")
             }
 
             // Create a new camera selector each time, enforcing lens facing
