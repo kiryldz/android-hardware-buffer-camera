@@ -18,12 +18,25 @@ add_library(
         app/src/main/native/cpp/vulkan_renderer.cpp
 )
 
+# Set the Android NDK path
+set(ANDROID_NDK_ROOT ${CMAKE_ANDROID_NDK})
+set(ANDROID_API_LEVEL ${CMAKE_ANDROID_API})
+set(ANDROID_ABI ${CMAKE_ANDROID_ARCH_ABI})
+
+# Set the glslang name - needed to build and link SPIRV
+set(GLSLANG_LIBRARIES glslang)
+
 add_subdirectory(vendor/glm)
 add_subdirectory(vendor/oneTBB)
+add_subdirectory(vendor/Vulkan-Headers)
+add_subdirectory(vendor/volk)
+add_subdirectory(vendor/glslang)
 
 include_directories(
         vendor/oneTBB/include
         vendor/jni.hpp/include
+        vendor/Vulkan-Headers/include
+        vendor/glslang/glslang/Public
 )
 
 target_link_libraries(
@@ -35,4 +48,7 @@ target_link_libraries(
         log
         glm
         tbb
+        volk_headers
+        ${GLSLANG_LIBRARIES}
+        SPIRV
 )

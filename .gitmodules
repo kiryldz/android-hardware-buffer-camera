@@ -7,3 +7,13 @@
 [submodule "vendor/oneTBB"]
 	path = vendor/oneTBB
 	url = git@github.com:oneapi-src/oneTBB.git
+[submodule "vendor/Vulkan-Headers"]
+	path = vendor/Vulkan-Headers
+	url = git@github.com:KhronosGroup/Vulkan-Headers.git
+[submodule "vendor/volk"]
+	path = vendor/volk
+	url = git@github.com:zeux/volk.git
+[submodule "vendor/glslang"]
+	path = vendor/glslang
+	url = git@github.com:KhronosGroup/glslang.git
+

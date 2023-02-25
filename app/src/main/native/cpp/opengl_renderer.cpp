@@ -77,14 +77,10 @@ void OpenGLRenderer::doFrame(long, void* data) {
     // perform the check if aHwBufferQueue is not empty - then we need to catch up
     AHardwareBuffer * aHardwareBuffer;
     if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
-      LOGI("Catching up as some more buffers could be consumed!");
+//      LOGI("Catching up as some more buffers could be consumed!");
       renderer->hwBufferToExternalTexture(aHardwareBuffer);
     }
   }
-}
-
-bool OpenGLRenderer::couldRender() const {
-  return eglPrepared && viewportHeight > 0 && viewportHeight > 0;
 }
 
 bool OpenGLRenderer::prepareEgl()
@@ -258,7 +254,7 @@ void OpenGLRenderer::destroyEgl() {
   LOGI("EGL destroyed!");
 }
 
-void OpenGLRenderer::render() {
+void OpenGLRenderer::renderImpl() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   // no actual camera drawing to do if first hardware buffer was not described and loaded to ext texture
   if (!hardwareBufferDescribed) {
@@ -309,15 +305,18 @@ void OpenGLRenderer::render() {
   if (!eglSwapBuffers(eglDisplay, eglSurface)) {
     LOGE("eglSwapBuffers returned error %d", eglGetError());
   } else {
-    LOGI("Swapped buffers!");
+//    LOGI("Swapped buffers!");
   }
 }
 
 void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer) {
   // EGL could have already be destroyed beforehand
-  if (!eglPrepared) return;
+  if (!eglPrepared) {
+    AHardwareBuffer_release(aHardwareBuffer);
+    return;
+  }
   static EGLint attrs[] = { EGL_NONE };
-  LOGI("Pop hardware buffer, size %u", aHwBufferQueue.unsafe_size());
+//  LOGI("Pop hardware buffer, size %u", aHwBufferQueue.unsafe_size());
   EGLImageKHR image = eglCreateImageKHR(
     eglDisplay,
     // a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
