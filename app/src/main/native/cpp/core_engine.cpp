@@ -7,7 +7,8 @@ CoreEngine::CoreEngine(JNIEnv & env, jni::jint renderingMode): aNativeWindow(nul
   switch (renderingMode) {
     case 0: {
       LOGI("Using OpenGL ES renderer");
-      renderer = std::make_unique<OpenGLRenderer>();
+      // TODO WTFF
+//      renderer = std::make_unique<OpenGLRenderer>();
       break;
     }
     case 1: {

@@ -15,7 +15,7 @@
 namespace engine {
 namespace android {
 
-class OpenGLRenderer : public BaseRenderer {
+class OpenGLRenderer : private BaseRenderer {
 
 protected:
   const char* renderingModeName() override {
@@ -38,6 +38,14 @@ protected:
   void hwBufferToTexture(AHardwareBuffer *buffer) override {
     hwBufferToExternalTexture(buffer);
   }
+
+  bool couldRender() const override {
+    return eglPrepared && viewportHeight > 0 && viewportHeight > 0;
+  };
+
+  void render() override {
+    renderImpl();
+	}
 
   void postChoreographerCallback() override {
     // posting next frame callback, no need to explicitly wake the looper afterwards
@@ -98,8 +106,6 @@ private:
 
   ///////// Functions
 
-  bool couldRender() const;
-  void render();
   bool prepareEgl();
   void destroyEgl();
 
@@ -108,6 +114,8 @@ private:
    * @param aHardwareBuffer
    */
   void hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer);
+
+	void renderImpl();
 
   ///////// Callbacks for AChoreographer and ALooper stored as private static functions
 

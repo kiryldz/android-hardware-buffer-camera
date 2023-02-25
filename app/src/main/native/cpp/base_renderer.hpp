@@ -33,6 +33,8 @@ protected:
   virtual void onWindowDestroyed() = 0;
   virtual void onWindowSizeUpdated(int width, int height) = 0;
   virtual void hwBufferToTexture(AHardwareBuffer* buffer) = 0;
+  virtual bool couldRender() const = 0;
+  virtual void render() = 0;
 
   // TODO need another function as real function is static and could not be moved to base class,
   //  perhaps could be done better

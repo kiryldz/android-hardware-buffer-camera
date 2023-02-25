@@ -5,8 +5,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.SurfaceView
 import androidx.appcompat.app.AppCompatActivity
@@ -16,7 +14,6 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.os.postDelayed
 import androidx.lifecycle.LifecycleOwner
 import java.util.concurrent.Executors
 import kotlin.random.Random
@@ -33,7 +30,7 @@ class CameraActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         coreEngine = CoreEngine(
             surfaceHolder = findViewById<SurfaceView>(R.id.surface_view).holder,
-            renderingMode = RenderingMode.OPEN_GL_ES,
+            renderingMode = RenderingMode.VULKAN,
         )
     }
 
@@ -96,14 +93,14 @@ class CameraActivity : AppCompatActivity() {
                 .build()
 
             imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
-                Log.i(TAG, "New image arrived!")
+//                Log.i(TAG, "New image arrived!")
                 imageProxy.image?.hardwareBuffer?.let { buffer ->
                     coreEngine.feedHardwareBuffer(buffer)
                     buffer.close()
-                    Log.i(TAG, "Buffer fed and closed in Java!")
+//                    Log.i(TAG, "Buffer fed and closed in Java!")
                 }
                 imageProxy.close()
-                Log.i(TAG, "Image closed!")
+//                Log.i(TAG, "Image closed!")
             }
 
             // Create a new camera selector each time, enforcing lens facing
