@@ -10,7 +10,7 @@ namespace android {
 
 // OPENGL HELPER METHODS START
 
-const char* stringFromError(GLenum err) {
+const char *stringFromError(GLenum err) {
   switch (err) {
     case GL_INVALID_ENUM:
       return "GL_INVALID_ENUM";
@@ -70,22 +70,12 @@ void checkCompileStatus(GLuint shader) {
 
 // OPENGL HELPER METHODS END
 
-OpenGLRenderer::OpenGLRenderer(): renderThread(std::make_unique<LooperThread>()) {
-  LOGI("OpenGLRenderer constructor");
-}
-
-OpenGLRenderer::~OpenGLRenderer() {
-  LOGI("OpenGLRenderer destructor");
-  renderThread.reset();
-  LOGI("OpenGLRenderer destructor, confirm that render thread killed!");
-}
-
-void OpenGLRenderer::doFrame(long, void* data) {
-  auto * renderer = reinterpret_cast<engine::android::OpenGLRenderer*>(data);
+void OpenGLRenderer::doFrame(long, void *data) {
+  auto *renderer = reinterpret_cast<engine::android::OpenGLRenderer *>(data);
   if (renderer->couldRender()) {
     renderer->render();
     // perform the check if aHwBufferQueue is not empty - then we need to catch up
-    AHardwareBuffer * aHardwareBuffer;
+    AHardwareBuffer *aHardwareBuffer;
     if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
       LOGI("Catching up as some more buffers could be consumed!");
       renderer->hwBufferToExternalTexture(aHardwareBuffer);
@@ -93,54 +83,7 @@ void OpenGLRenderer::doFrame(long, void* data) {
   }
 }
 
-void OpenGLRenderer::setWindow(ANativeWindow * window) {
-  std::unique_lock<std::mutex> lock(eglMutex);
-  aNativeWindow = window;
-  // schedule an event to the render thread
-  renderThread->scheduleTask([this] {
-    const auto eglOK = prepareEgl();
-    if (eglOK) {
-      aChoreographer = AChoreographer_getInstance();
-      // posting next frame callback, no need to explicitly wake the looper afterwards
-      // as AChoreographer seems to operate with it's own fd and callbacks
-      AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
-    }
-    eglInitialized.notify_one();
-  });
-  LOGI("New Android surface arrived, waiting for OpenGL context creation...");
-  eglInitialized.wait(lock);
-  LOGI("New Android surface processed, resuming main thread!");
-}
-
-void OpenGLRenderer::updateWindowSize(int width, int height) {
-  // schedule an event to the render thread
-  renderThread->scheduleTask([this, width, height] {
-    viewportWidth = width;
-    viewportHeight = height;
-    LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
-    glClearColor(0.5, 0.5, 0.5, 0.5);
-    glViewport(0, 0, viewportWidth, viewportHeight);
-  });
-}
-
-void OpenGLRenderer::resetWindow() {
-  std::unique_lock<std::mutex> lock(eglMutex);
-  renderThread->scheduleTask([this] {
-    destroyEgl();
-    aNativeWindow = nullptr;
-    eglDestroyed.notify_one();
-  });
-  LOGI("Android surface destroyed, waiting until EGL will be destroyed...");
-  eglDestroyed.wait(lock);
-  LOGI("Android surface destroyed, resuming main thread!");
-}
-
-bool OpenGLRenderer::couldRender() const {
-  return eglPrepared && viewportHeight > 0 && viewportHeight > 0;
-}
-
-bool OpenGLRenderer::prepareEgl()
-{
+bool OpenGLRenderer::prepareEgl() {
   LOGI("Configuring EGL");
 
   EGLDisplay display;
@@ -153,16 +96,16 @@ bool OpenGLRenderer::prepareEgl()
   // using classic RGBA 8888 config, trust Google Grafika here,
   // see https://github.com/google/grafika/blob/b1df331e89cffeab621f02b102d4c2c25eb6088a/app/src/main/java/com/android/grafika/gles/EglCore.java#L150-L152
   const int attr[] = {
-    EGL_CONFIG_CAVEAT, EGL_NONE,
-    EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-    EGL_RED_SIZE, 8,
-    EGL_GREEN_SIZE, 8,
-    EGL_BLUE_SIZE, 8,
-    EGL_ALPHA_SIZE, 8,
-    EGL_DEPTH_SIZE, 0,
-    EGL_STENCIL_SIZE, 0,
-    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
-    EGL_NONE
+          EGL_CONFIG_CAVEAT, EGL_NONE,
+          EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+          EGL_RED_SIZE, 8,
+          EGL_GREEN_SIZE, 8,
+          EGL_BLUE_SIZE, 8,
+          EGL_ALPHA_SIZE, 8,
+          EGL_DEPTH_SIZE, 0,
+          EGL_STENCIL_SIZE, 0,
+          EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+          EGL_NONE
   };
 
   if ((display = eglGetDisplay(EGL_DEFAULT_DISPLAY)) == EGL_NO_DISPLAY) {
@@ -199,8 +142,8 @@ bool OpenGLRenderer::prepareEgl()
     return false;
   }
   const int attribute_list[] = {
-    EGL_CONTEXT_CLIENT_VERSION, 3,
-    EGL_NONE
+          EGL_CONTEXT_CLIENT_VERSION, 3,
+          EGL_NONE
   };
 
   if (!(context = eglCreateContext(display, config, nullptr, attribute_list))) {
@@ -228,7 +171,8 @@ bool OpenGLRenderer::prepareEgl()
     LOGE("Couldn't get function pointer to eglCreateImageKHR extension!");
     return false;
   }
-  glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC) eglGetProcAddress("glEGLImageTargetTexture2DOES");
+  glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC) eglGetProcAddress(
+          "glEGLImageTargetTexture2DOES");
   if (!glEGLImageTargetTexture2DOES) {
     LOGE("Couldn't get function pointer to glEGLImageTargetTexture2DOES extension!");
     return false;
@@ -238,7 +182,8 @@ bool OpenGLRenderer::prepareEgl()
     LOGE("Couldn't get function pointer to eglDestroyImageKHR extension!");
     return false;
   }
-  eglGetNativeClientBufferANDROID = (PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC) eglGetProcAddress("eglGetNativeClientBufferANDROID");
+  eglGetNativeClientBufferANDROID = (PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC) eglGetProcAddress(
+          "eglGetNativeClientBufferANDROID");
   if (!eglGetNativeClientBufferANDROID) {
     LOGE("Couldn't get function pointer to eglGetNativeClientBufferANDROID extension!");
     return false;
@@ -269,10 +214,10 @@ bool OpenGLRenderer::prepareEgl()
   glGenBuffers(1, vbo);
   glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
   glBufferData(
-    GL_ARRAY_BUFFER,
-    sizeof(vertexArray),
-    vertexArray,
-    GL_STATIC_DRAW
+          GL_ARRAY_BUFFER,
+          sizeof(vertexArray),
+          vertexArray,
+          GL_STATIC_DRAW
   );
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 
@@ -281,14 +226,14 @@ bool OpenGLRenderer::prepareEgl()
 
   LOGI("EGL initialized, version %s, GPU is %s",
        eglQueryString(eglDisplay, EGL_VERSION),
-       (const char*)glGetString(GL_RENDERER)
+       (const char *) glGetString(GL_RENDERER)
   );
   LOGI("GL initialized, errors on context: %s, version: %s",
        stringFromError(glGetError()),
        glGetString(GL_VERSION)
   );
   // make sure that if we resume - buffer does not contain outdated frames so pop and release them
-  AHardwareBuffer * aHardwareBuffer;
+  AHardwareBuffer *aHardwareBuffer;
   while (aHwBufferQueue.try_pop(aHardwareBuffer)) {
     AHardwareBuffer_release(aHardwareBuffer);
   }
@@ -310,7 +255,7 @@ void OpenGLRenderer::destroyEgl() {
   LOGI("EGL destroyed!");
 }
 
-void OpenGLRenderer::render() {
+void OpenGLRenderer::renderImpl() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   // no actual camera drawing to do if first hardware buffer was not described and loaded to ext texture
   if (!hardwareBufferDescribed) {
@@ -322,32 +267,33 @@ void OpenGLRenderer::render() {
   glUseProgram(program);
   glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
   glVertexAttribPointer(
-    0,
-    2,
-    GL_FLOAT,
-    GL_FALSE,
-    4 * sizeof(float),
-    nullptr
+          0,
+          2,
+          GL_FLOAT,
+          GL_FALSE,
+          4 * sizeof(float),
+          nullptr
   );
   glEnableVertexAttribArray(0);
   glVertexAttribPointer(
-    1,
-    2,
-    GL_FLOAT,
-    GL_FALSE,
-    4 * sizeof(float),
-    (void*) (2 * sizeof(float))
+          1,
+          2,
+          GL_FLOAT,
+          GL_FALSE,
+          4 * sizeof(float),
+          (void *) (2 * sizeof(float))
   );
   glEnableVertexAttribArray(1);
   // calculate MVP matrix only once
-  static const float viewportRatio = static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
+  static const float viewportRatio =
+          static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
   static const float ratio = viewportRatio * bufferImageRatio;
   static auto proj = glm::frustum(-ratio, ratio, -1.f, 1.f, 3.f, 7.f);
   static auto view = glm::lookAt(
-    glm::vec3(0.f, 0.f, 3.f),
-    glm::vec3(0.f, 0.f, 0.f),
-    glm::vec3(1.f, 0.f, 0.f)
-    );
+          glm::vec3(0.f, 0.f, 3.f),
+          glm::vec3(0.f, 0.f, 0.f),
+          glm::vec3(1.f, 0.f, 0.f)
+  );
   static auto mvp = proj * view;
   glUniformMatrix4fv(uniformMvp, 1, GL_FALSE, glm::value_ptr(mvp));
   glActiveTexture(GL_TEXTURE0);
@@ -365,40 +311,25 @@ void OpenGLRenderer::render() {
   }
 }
 
-void OpenGLRenderer::feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer) {
-  if (!hardwareBufferDescribed) {
-    AHardwareBuffer_Desc description;
-    AHardwareBuffer_describe(aHardwareBuffer, &description);
-    bufferImageRatio = static_cast<float>(description.width) / static_cast<float>(description.height);
-  }
-  // it seems that there's no leak even if we do not explicitly acquire / release but guess better do that
-  AHardwareBuffer_acquire(aHardwareBuffer);
-  aHwBufferQueue.push(aHardwareBuffer);
-  LOGI("Feed new hardware buffer, size %u", aHwBufferQueue.unsafe_size());
-  renderThread->scheduleTask([this] {
-    AHardwareBuffer * aHardwareBuffer;
-    if (aHwBufferQueue.try_pop(aHardwareBuffer)) {
-      hwBufferToExternalTexture(aHardwareBuffer);
-    }
-  });
-}
-
-void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer) {
+void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer *aHardwareBuffer) {
   // EGL could have already be destroyed beforehand
-  if (!eglPrepared) return;
+  if (!eglPrepared) {
+    AHardwareBuffer_release(aHardwareBuffer);
+    return;
+  }
   // first thing post another doFrame callback as we will need to render this texture
   AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
-  static EGLint attrs[] = { EGL_NONE };
+  static EGLint attrs[] = {EGL_NONE};
   LOGI("Pop hardware buffer, size %u", aHwBufferQueue.unsafe_size());
   EGLImageKHR image = eglCreateImageKHR(
-    eglDisplay,
-    // a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
-    // on Mali G77 passing valid OpenGL context works here but EGL_NO_CONTEXT works as well so
-    // leaving EGL_NO_CONTEXT here
-    EGL_NO_CONTEXT,
-    EGL_NATIVE_BUFFER_ANDROID,
-    eglGetNativeClientBufferANDROID(aHardwareBuffer),
-    attrs);
+          eglDisplay,
+          // a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
+          // on Mali G77 passing valid OpenGL context works here but EGL_NO_CONTEXT works as well so
+          // leaving EGL_NO_CONTEXT here
+          EGL_NO_CONTEXT,
+          EGL_NATIVE_BUFFER_ANDROID,
+          eglGetNativeClientBufferANDROID(aHardwareBuffer),
+          attrs);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraExternalTex);
   glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, image);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);

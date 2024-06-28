@@ -4,12 +4,12 @@ plugins {
 }
 
 android {
-    compileSdk 32
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.dz.camerafast"
         minSdk 28
-        targetSdk 32
+        targetSdk 34
         versionCode 1
         versionName "1.0"
 
@@ -52,6 +52,9 @@ android {
             path = file("../CMakeLists.txt")
         }
     }
+
+    ndkVersion = '25.1.8937393'
+    namespace 'com.dz.camerafast'
 }
 
 dependencies {

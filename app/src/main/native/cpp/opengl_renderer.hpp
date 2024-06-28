@@ -1,10 +1,5 @@
 #pragma once
 
-#include <android/choreographer.h>
-#include <android/hardware_buffer.h>
-#include <android/native_window.h>
-#include <android/native_window_jni.h>
-
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
@@ -15,116 +10,118 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <tbb/concurrent_queue.h>
-
-#include "looper_thread.hpp"
-#include "util.hpp"
+#include "base_renderer.hpp"
 
 namespace engine {
 namespace android {
 
-#define PIPE_OUT 0
-#define PIPE_IN  1
+class OpenGLRenderer : public BaseRenderer {
+protected:
 
-class OpenGLRenderer {
-public:
-  OpenGLRenderer();
-  ~OpenGLRenderer();
+    const char *renderingModeName() override {
+        return (const char *) "OpenGL ES";
+    }
 
-  void setWindow(ANativeWindow * window);
-  void updateWindowSize(int width, int height);
-  void resetWindow();
-  /**
-   * Always called from camera worker thread - feed new camera buffer.
-   * @param aHardwareBuffer
-   */
-  void feedHardwareBuffer(AHardwareBuffer * aHardwareBuffer);
+    bool onWindowCreated() override {
+        return prepareEgl();
+    }
+
+    void onWindowSizeUpdated(int width, int height) override {
+        glClearColor(0.5, 0.5, 0.5, 0.5);
+        glViewport(0, 0, width, height);
+    }
+
+    void onWindowDestroyed() override {
+        destroyEgl();
+    }
+
+    void hwBufferToTexture(AHardwareBuffer *buffer) override {
+        hwBufferToExternalTexture(buffer);
+    }
+
+    bool couldRender() const override {
+        return eglPrepared && viewportHeight > 0 && viewportHeight > 0;
+    }
+
+    void render() override {
+        renderImpl();
+    }
+
+    void postChoreographerCallback() override {
+        // posting next frame callback, no need to explicitly wake the looper afterwards
+        // as AChoreographer seems to operate with it's own fd and callbacks
+        AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
+    }
 
 private:
-  ///////// OpenGL
-  const GLchar * vertexShaderSource = "#version 320 es\n"
-                                      "precision highp float;"
-                                      "uniform mat4 uMvpMatrix;"
-                                      "layout (location = 0) in vec2 aPosition;"
-                                      "layout (location = 1) in vec2 aTexCoord;"
-                                      "out vec2 vCoordinate;"
-                                      "void main() {"
-                                      " vCoordinate = aTexCoord;"
-                                      " gl_Position = uMvpMatrix * vec4(aPosition, 0.0, 1.0);"
-                                      "}";
-  const GLchar * fragmentShaderSource = "#version 320 es\n"
-                                        "#extension GL_OES_EGL_image_external_essl3 : require\n"
-                                        "precision mediump float;"
-                                        "in vec2 vCoordinate;"
-                                        "out vec4 FragColor;"
-                                        "uniform samplerExternalOES sExtSampler;"
-                                        "void main() {"
-                                        " FragColor = texture(sExtSampler, vCoordinate);"
-                                        "}";
+    ///////// OpenGL
+    const GLchar *vertexShaderSource = "#version 320 es\n"
+                                       "precision highp float;"
+                                       "uniform mat4 uMvpMatrix;"
+                                       "layout (location = 0) in vec2 aPosition;"
+                                       "layout (location = 1) in vec2 aTexCoord;"
+                                       "out vec2 vCoordinate;"
+                                       "void main() {"
+                                       " vCoordinate = aTexCoord;"
+                                       " gl_Position = uMvpMatrix * vec4(aPosition, 0.0, 1.0);"
+                                       "}";
+    const GLchar *fragmentShaderSource = "#version 320 es\n"
+                                         "#extension GL_OES_EGL_image_external_essl3 : require\n"
+                                         "precision mediump float;"
+                                         "in vec2 vCoordinate;"
+                                         "out vec4 FragColor;"
+                                         "uniform samplerExternalOES sExtSampler;"
+                                         "void main() {"
+                                         " FragColor = texture(sExtSampler, vCoordinate);"
+                                         "}";
 
-  /**
-   * Store all the verticies in one array and operate with strides instead of storing 2 VBOs:
-   * one for positions coordinates and another for texture coordinates.
-   */
-  float vertexArray[16] = {
-    // positions    // texture coordinates
-    -1.0f, -1.0f,   0.0f, 0.0f,
-    -1.0f,  1.0f,   0.0f, 1.0f,
-    1.0f, -1.0f,   1.0f, 0.0f,
-    1.0f,  1.0f,   1.0f, 1.0f
-  };
-  GLuint program = 0;
-  GLuint vertexShader = 0;
-  GLuint fragmentShader = 0;
-  GLuint vbo[1];
-  GLint uniformMvp = 0;
-  GLint externalSampler = 0;
-  GLuint cameraExternalTex = 0;
+    /**
+     * Store all the verticies in one array and operate with strides instead of storing 2 VBOs:
+     * one for positions coordinates and another for texture coordinates.
+     */
+    float vertexArray[16] = {
+            // positions    // texture coordinates
+            -1.0f, -1.0f, 0.0f, 0.0f,
+            -1.0f, 1.0f, 0.0f, 1.0f,
+            1.0f, -1.0f, 1.0f, 0.0f,
+            1.0f, 1.0f, 1.0f, 1.0f
+    };
+    GLuint program = 0;
+    GLuint vertexShader = 0;
+    GLuint fragmentShader = 0;
+    GLuint vbo[1];
+    GLint uniformMvp = 0;
+    GLint externalSampler = 0;
+    GLuint cameraExternalTex = 0;
 
-  ///////// EGL
+    ///////// EGL
 
-  EGLDisplay eglDisplay;
-  EGLContext eglContext;
-  EGLSurface eglSurface;
+    EGLDisplay eglDisplay;
+    EGLContext eglContext;
+    EGLSurface eglSurface;
 
-  ///////// Threads and threading
+    ///////// Variables
 
-  std::unique_ptr<LooperThread> renderThread;
-  std::mutex eglMutex;
-  std::condition_variable eglInitialized;
-  std::condition_variable eglDestroyed;
-  /**
-   * Concurrent queue needed as worker camera thread produces buffers while render thread consumes them.
-   */
-  tbb::concurrent_queue<AHardwareBuffer*> aHwBufferQueue;
+    volatile bool hardwareBufferDescribed = false;
+    volatile bool eglPrepared = false;
 
-  ///////// Variables
+    ///////// Functions
 
-  AChoreographer * aChoreographer = nullptr;
-  ANativeWindow * aNativeWindow = nullptr;
+    bool prepareEgl();
 
-  int viewportWidth = -1;
-  int viewportHeight = -1;
-  volatile bool hardwareBufferDescribed = false;
-  volatile bool eglPrepared = false;
-  float bufferImageRatio = 1.0f;
+    void destroyEgl();
 
-  ///////// Functions
+    void renderImpl();
 
-  bool couldRender() const;
-  void render();
-  bool prepareEgl();
-  void destroyEgl();
+    /**
+     * Always called from render thread - converting hardware buffer to an OpenGL external texture.
+     * @param aHardwareBuffer
+     */
+    void hwBufferToExternalTexture(AHardwareBuffer *aHardwareBuffer);
 
-  /**
-   * Always called from render thread - converting hardware buffer to an OpenGL external texture.
-   * @param aHardwareBuffer
-   */
-  void hwBufferToExternalTexture(AHardwareBuffer * aHardwareBuffer);
+    ///////// Callbacks for AChoreographer and ALooper stored as private static functions
 
-  ///////// Callbacks for AChoreographer and ALooper stored as private static functions
-
-  static void doFrame(long timeStampNanos, void* data);
+    static void doFrame(long timeStampNanos, void *data);
 };
 
 } // namespace android

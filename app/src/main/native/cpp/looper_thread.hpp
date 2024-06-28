@@ -9,6 +9,7 @@ namespace engine {
 namespace android {
 
 using Task = std::function<void()>;
+
 class RunLoop;
 
 /**
@@ -16,14 +17,15 @@ class RunLoop;
  */
 class LooperThread {
 public:
-    LooperThread();
-    ~LooperThread();
+  LooperThread();
 
-    void scheduleTask(Task&& task);
+  ~LooperThread();
+
+  void scheduleTask(Task &&task);
 
 private:
-    std::shared_ptr<RunLoop> runLoop_;
-    std::thread thread_;
+  std::shared_ptr <RunLoop> runLoop_;
+  std::thread thread_;
 };
 
 }  // namespace android

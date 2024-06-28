@@ -10,6 +10,7 @@ add_library(
     native-engine
         SHARED
         app/src/main/native/cpp/main.cpp
+        app/src/main/native/cpp/base_renderer.cpp
         app/src/main/native/cpp/core_engine.cpp
         app/src/main/native/cpp/opengl_renderer.cpp
         app/src/main/native/cpp/looper_thread.cpp

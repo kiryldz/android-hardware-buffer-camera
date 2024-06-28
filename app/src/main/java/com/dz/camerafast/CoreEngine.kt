@@ -9,14 +9,15 @@ import androidx.annotation.Keep
 
 @Keep
 class CoreEngine(
-    surfaceHolder: SurfaceHolder
+    surfaceHolder: SurfaceHolder,
+    renderingMode: RenderingMode,
 ) : SurfaceHolder.Callback {
 
     init {
         // we will use RGBA_8888 here and use same config in render thread
         surfaceHolder.setFormat(PixelFormat.RGBA_8888)
         System.loadLibrary("native-engine")
-        initialize()
+        initialize(renderingMode.ordinal)
         surfaceHolder.addCallback(this)
     }
 
@@ -52,7 +53,7 @@ class CoreEngine(
 
     private external fun nativeDestroy()
 
-    private external fun initialize()
+    private external fun initialize(mode: Int)
 
     protected external fun finalize()
 
