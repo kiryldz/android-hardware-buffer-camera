@@ -13,14 +13,12 @@
 namespace engine {
 namespace android {
 
-class Surface
-{
+class Surface {
 public:
   static constexpr auto Name() { return "android/view/Surface"; }
 };
 
-class HardwareBuffer
-{
+class HardwareBuffer {
 public:
   static constexpr auto Name() { return "android/hardware/HardwareBuffer"; }
 };
@@ -30,34 +28,37 @@ class CoreEngine {
 public:
   static constexpr auto Name() { return "com/dz/camerafast/CoreEngine"; }
 
-  static void registerNatives(JNIEnv& env) {
+  static void registerNatives(JNIEnv &env) {
     jni::Class<CoreEngine>::Singleton(env);
     jni::RegisterNativePeer<CoreEngine>(
-      env,
-      jni::Class<CoreEngine>::Find(env),
-      "peer",
-      jni::MakePeer<CoreEngine, jni::jint>,
-      "initialize",
-      "finalize",
-      METHOD(&CoreEngine::nativeSetSurface, "nativeSetSurface"),
-      METHOD(&CoreEngine::nativeFeedHardwareBuffer, "nativeFeedHardwareBuffer"),
-      METHOD(&CoreEngine::nativeDestroy, "nativeDestroy")
+            env,
+            jni::Class<CoreEngine>::Find(env),
+            "peer",
+            jni::MakePeer < CoreEngine, jni::jint > ,
+            "initialize",
+            "finalize",
+            METHOD(&CoreEngine::nativeSetSurface, "nativeSetSurface"),
+            METHOD(&CoreEngine::nativeFeedHardwareBuffer, "nativeFeedHardwareBuffer"),
+            METHOD(&CoreEngine::nativeDestroy, "nativeDestroy")
     );
   }
 
-  CoreEngine(JNIEnv & env, jni::jint renderingMode);
+  CoreEngine(JNIEnv &env, jni::jint renderingMode);
+
   CoreEngine(CoreEngine const &) = delete;
+
   ~CoreEngine();
 
-  void nativeSetSurface(JNIEnv & env, jni::Object<Surface> const & surface, jni::jint width, jni::jint height);
+  void nativeSetSurface(JNIEnv &env, jni::Object <Surface> const &surface, jni::jint width,
+                        jni::jint height);
 
-  void nativeFeedHardwareBuffer(JNIEnv & env, jni::Object<HardwareBuffer> const & buffer);
+  void nativeFeedHardwareBuffer(JNIEnv &env, jni::Object <HardwareBuffer> const &buffer);
 
-  void nativeDestroy(JNIEnv & env);
+  void nativeDestroy(JNIEnv &env);
 
 private:
-  ANativeWindow * aNativeWindow;
-  std::unique_ptr<BaseRenderer> renderer;
+  ANativeWindow *aNativeWindow;
+  std::unique_ptr <BaseRenderer> renderer;
 };
 
 } // namespace android
