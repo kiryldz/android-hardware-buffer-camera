@@ -6,6 +6,7 @@
 #include <android/native_window_jni.h>
 #include <jni/jni.hpp>
 
+#include "base_renderer.hpp"
 #include "opengl_renderer.hpp"
 #include "util.hpp"
 
@@ -35,7 +36,7 @@ public:
       env,
       jni::Class<CoreEngine>::Find(env),
       "peer",
-      jni::MakePeer<CoreEngine>,
+      jni::MakePeer<CoreEngine, jni::jint>,
       "initialize",
       "finalize",
       METHOD(&CoreEngine::nativeSetSurface, "nativeSetSurface"),
@@ -44,7 +45,7 @@ public:
     );
   }
 
-  CoreEngine(JNIEnv & env);
+  CoreEngine(JNIEnv & env, jni::jint renderingMode);
   CoreEngine(CoreEngine const &) = delete;
   ~CoreEngine();
 
@@ -56,8 +57,7 @@ public:
 
 private:
   ANativeWindow * aNativeWindow;
-  std::unique_ptr<OpenGLRenderer> openGlRenderer;
-
+  std::unique_ptr<BaseRenderer> renderer;
 };
 
 } // namespace android

@@ -28,7 +28,10 @@ class CameraActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        coreEngine = CoreEngine(findViewById<SurfaceView>(R.id.surface_view).holder)
+        coreEngine = CoreEngine(
+            surfaceHolder = findViewById<SurfaceView>(R.id.surface_view).holder,
+            renderingMode = RenderingMode.VULKAN,
+        )
     }
 
     override fun onResume() {
