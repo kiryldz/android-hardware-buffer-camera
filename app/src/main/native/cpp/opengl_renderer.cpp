@@ -75,11 +75,13 @@ void OpenGLRenderer::doFrame(long, void *data) {
   if (renderer->couldRender()) {
     renderer->render();
     // perform the check if aHwBufferQueue is not empty - then we need to catch up
-    AHardwareBuffer *aHardwareBuffer;
-    if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
+    renderer->bufferQueueMutex.lock();
+    if (!renderer->aHwBufferQueue.empty()) {
       LOGI("Catching up as some more buffers could be consumed!");
-      renderer->hwBufferToExternalTexture(aHardwareBuffer);
+      renderer->hwBufferToExternalTexture(renderer->aHwBufferQueue.front());
+      renderer->aHwBufferQueue.pop();
     }
+    renderer->bufferQueueMutex.unlock();
   }
 }
 
@@ -233,10 +235,12 @@ bool OpenGLRenderer::prepareEgl() {
        glGetString(GL_VERSION)
   );
   // make sure that if we resume - buffer does not contain outdated frames so pop and release them
-  AHardwareBuffer *aHardwareBuffer;
-  while (aHwBufferQueue.try_pop(aHardwareBuffer)) {
-    AHardwareBuffer_release(aHardwareBuffer);
+  bufferQueueMutex.lock();
+  while (!aHwBufferQueue.empty()) {
+    AHardwareBuffer_release(aHwBufferQueue.front());
+    aHwBufferQueue.pop();
   }
+  bufferQueueMutex.unlock();
   eglPrepared = true;
   return true;
 }
@@ -320,7 +324,7 @@ void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer *aHardwareBuffer)
   // first thing post another doFrame callback as we will need to render this texture
   AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
   static EGLint attrs[] = {EGL_NONE};
-  LOGI("Pop hardware buffer, size %u", aHwBufferQueue.unsafe_size());
+  LOGI("Pop hardware buffer, size %u", aHwBufferQueue.size());
   EGLImageKHR image = eglCreateImageKHR(
           eglDisplay,
           // a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...

@@ -13,18 +13,22 @@ add_library(
         app/src/main/native/cpp/base_renderer.cpp
         app/src/main/native/cpp/core_engine.cpp
         app/src/main/native/cpp/opengl_renderer.cpp
+        app/src/main/native/cpp/vulkan_renderer.cpp
+        app/src/main/native/cpp/vulkan_wrapper.cpp
         app/src/main/native/cpp/looper_thread.cpp
         app/src/main/native/cpp/run_loop.cpp
-        app/src/main/native/cpp/run_loop.hpp
 )
 
 add_subdirectory(vendor/glm)
-add_subdirectory(vendor/oneTBB)
 
 include_directories(
-        vendor/oneTBB/include
         vendor/jni.hpp/include
+        libs/shaderc/include
 )
+
+add_library(shaderc STATIC IMPORTED)
+set_target_properties(shaderc PROPERTIES IMPORTED_LOCATION
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/shaderc/${ANDROID_STL}/${ANDROID_ABI}/libshaderc.a)
 
 target_link_libraries(
     native-engine
@@ -34,5 +38,4 @@ target_link_libraries(
         android
         log
         glm
-        tbb
 )

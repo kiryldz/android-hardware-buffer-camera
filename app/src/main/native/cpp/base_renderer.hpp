@@ -5,7 +5,7 @@
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 
-#include <tbb/concurrent_queue.h>
+#include <queue>
 
 #include "looper_thread.hpp"
 #include "util.hpp"
@@ -60,9 +60,10 @@ protected:
     float bufferImageRatio = 1.0f;
 
     /**
-     * Concurrent queue needed as worker camera thread produces buffers while render thread consumes them.
+     * Queue with a mutex needed as worker camera thread produces buffers while render thread consumes them.
      */
-    tbb::concurrent_queue<AHardwareBuffer *> aHwBufferQueue;
+    std::queue<AHardwareBuffer *> aHwBufferQueue;
+    std::mutex bufferQueueMutex;
 
 private:
     std::unique_ptr <LooperThread> renderThread;

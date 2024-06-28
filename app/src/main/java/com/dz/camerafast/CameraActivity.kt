@@ -51,11 +51,6 @@ class CameraActivity : AppCompatActivity() {
         coreEngine.destroy()
     }
 
-    override fun onBackPressed() {
-        super.onBackPressed()
-        finish()
-    }
-
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,

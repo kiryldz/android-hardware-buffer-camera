@@ -67,12 +67,14 @@ void BaseRenderer::feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer) {
   aHwBufferQueue.push(aHardwareBuffer);
   //  LOGI("Feed new hardware buffer, size %u", aHwBufferQueue.unsafe_size());
   renderThread->scheduleTask([this] {
-    AHardwareBuffer *aHardwareBuffer;
-    if (aHwBufferQueue.try_pop(aHardwareBuffer)) {
-      hwBufferToTexture(aHardwareBuffer);
+    bufferQueueMutex.lock();
+    if (!aHwBufferQueue.empty()) {
+      hwBufferToTexture(aHwBufferQueue.front());
+      aHwBufferQueue.pop();
       // post choreographer callback as we will need to render this texture
       postChoreographerCallback();
     }
+    bufferQueueMutex.unlock();
   });
 }
 
