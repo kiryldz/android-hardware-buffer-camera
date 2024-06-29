@@ -12,6 +12,7 @@ CoreEngine::CoreEngine(JNIEnv &env, jni::jint renderingMode) : aNativeWindow(nul
         }
         case 1: {
             LOGI("Using Vulkan renderer");
+            renderer = std::make_unique<VulkanRenderer>();
             break;
         }
         default: {

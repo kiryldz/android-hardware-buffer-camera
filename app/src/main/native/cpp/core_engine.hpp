@@ -8,6 +8,8 @@
 
 #include "base_renderer.hpp"
 #include "opengl_renderer.hpp"
+#include "vulkan_renderer.hpp"
+
 #include "util.hpp"
 
 namespace engine {

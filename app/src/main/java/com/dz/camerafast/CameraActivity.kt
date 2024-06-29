@@ -11,6 +11,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -30,7 +33,7 @@ class CameraActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         coreEngine = CoreEngine(
             surfaceHolder = findViewById<SurfaceView>(R.id.surface_view).holder,
-            renderingMode = RenderingMode.OPEN_GL_ES,
+            renderingMode = RenderingMode.VULKAN,
         )
     }
 
@@ -81,7 +84,11 @@ class CameraActivity : AppCompatActivity() {
             // camera implementation may produce more in short period of time followed by some delay when
             // we catch up by popping the queue when we have a moment between VSYNC calls
             val imageAnalysis = ImageAnalysis.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .setResolutionSelector(
+                    ResolutionSelector.Builder()
+                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+                        .build()
+                )
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_BLOCK_PRODUCER)
                 .setImageQueueDepth(CAMERA_IMAGE_QUEUE_DEPTH)
