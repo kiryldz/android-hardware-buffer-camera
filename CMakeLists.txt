@@ -26,6 +26,9 @@ include_directories(
         libs/shaderc/include
 )
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
+    -DVK_USE_PLATFORM_ANDROID_KHR") # needed to enable Vulkan extension to work with Android native window
+
 add_library(shaderc STATIC IMPORTED)
 set_target_properties(shaderc PROPERTIES IMPORTED_LOCATION
         ${CMAKE_CURRENT_SOURCE_DIR}/libs/shaderc/${ANDROID_STL}/${ANDROID_ABI}/libshaderc.a)
