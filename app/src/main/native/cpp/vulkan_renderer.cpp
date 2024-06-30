@@ -19,7 +19,48 @@ void VulkanRenderer::doFrame(long timeStampNanos, void *data) {
   }
 }
 
-void VulkanRenderer::CreateVulkanDevice(VkApplicationInfo *appInfo) {
+void VulkanRenderer::createRenderPass() {
+  VkAttachmentDescription attachmentDescriptions{
+          .format = swapchain.displayFormat_,
+          .samples = VK_SAMPLE_COUNT_1_BIT,
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+          .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+          .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+          .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+          .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+  };
+
+  VkAttachmentReference colorReference = {
+          .attachment = 0, .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+
+  VkSubpassDescription subpassDescription{
+          .flags = 0,
+          .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+          .inputAttachmentCount = 0,
+          .pInputAttachments = nullptr,
+          .colorAttachmentCount = 1,
+          .pColorAttachments = &colorReference,
+          .pResolveAttachments = nullptr,
+          .pDepthStencilAttachment = nullptr,
+          .preserveAttachmentCount = 0,
+          .pPreserveAttachments = nullptr,
+  };
+  VkRenderPassCreateInfo renderPassCreateInfo{
+          .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+          .pNext = nullptr,
+          .attachmentCount = 1,
+          .pAttachments = &attachmentDescriptions,
+          .subpassCount = 1,
+          .pSubpasses = &subpassDescription,
+          .dependencyCount = 0,
+          .pDependencies = nullptr,
+  };
+  CALL_VK(vkCreateRenderPass(device.device_, &renderPassCreateInfo, nullptr,
+                             &renderInfo.renderPass_));
+}
+
+void VulkanRenderer::createVulkanDevice(VkApplicationInfo *appInfo) {
   std::vector<const char*> instance_extensions;
   std::vector<const char*> device_extensions;
 
@@ -111,7 +152,7 @@ void VulkanRenderer::CreateVulkanDevice(VkApplicationInfo *appInfo) {
   vkGetDeviceQueue(device.device_, 0, 0, &device.queue_);
 }
 
-void VulkanRenderer::CreateSwapChain() {
+void VulkanRenderer::createSwapChain() {
   LOGI("->createSwapChain");
   memset(&swapchain, 0, sizeof(swapchain));
 
@@ -139,6 +180,7 @@ void VulkanRenderer::CreateSwapChain() {
   assert(chosenFormat < formatCount);
 
   swapchain.displaySize_ = surfaceCapabilities.currentExtent;
+  LOGI("Display size w=%i, h=%i", swapchain.displaySize_.width, swapchain.displaySize_.height);
   swapchain.displayFormat_ = formats[chosenFormat].format;
 
   // **********************************************************
@@ -173,6 +215,69 @@ void VulkanRenderer::CreateSwapChain() {
                                   &swapchain.swapchainLength_, nullptr));
   delete[] formats;
   LOGI("<-createSwapChain");
+}
+
+void VulkanRenderer::createFrameBuffers() {
+  // query display attachment to swapchain
+  uint32_t swapchainImagesCount = 0;
+  CALL_VK(vkGetSwapchainImagesKHR(device.device_, swapchain.swapchain_,
+                                  &swapchainImagesCount, nullptr));
+  swapchain.displayImages_ = new VkImage[swapchainImagesCount];
+  CALL_VK(vkGetSwapchainImagesKHR(device.device_, swapchain.swapchain_,
+                                  &swapchainImagesCount,
+                                  swapchain.displayImages_));
+
+  // create image view for each swapchain image
+  swapchain.displayViews_ = new VkImageView[swapchainImagesCount];
+  for (uint32_t i = 0; i < swapchainImagesCount; i++) {
+    VkImageViewCreateInfo viewCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .image = swapchain.displayImages_[i],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = swapchain.displayFormat_,
+            .components =
+                    {
+                            .r = VK_COMPONENT_SWIZZLE_R,
+                            .g = VK_COMPONENT_SWIZZLE_G,
+                            .b = VK_COMPONENT_SWIZZLE_B,
+                            .a = VK_COMPONENT_SWIZZLE_A,
+                    },
+            .subresourceRange =
+                    {
+                            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                            .baseMipLevel = 0,
+                            .levelCount = 1,
+                            .baseArrayLayer = 0,
+                            .layerCount = 1,
+                    },
+    };
+    CALL_VK(vkCreateImageView(device.device_, &viewCreateInfo, nullptr,
+                              &swapchain.displayViews_[i]));
+  }
+
+  // create a framebuffer from each swapchain image
+  swapchain.framebuffers_ = new VkFramebuffer[swapchain.swapchainLength_];
+  for (uint32_t i = 0; i < swapchain.swapchainLength_; i++) {
+    VkImageView attachments[2] = {
+            swapchain.displayViews_[i], VK_NULL_HANDLE,
+    };
+    VkFramebufferCreateInfo fbCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+            .pNext = nullptr,
+            .renderPass = renderInfo.renderPass_,
+            .attachmentCount = 1,  // 2 if using depth
+            .pAttachments = attachments,
+            .width = static_cast<uint32_t>(swapchain.displaySize_.width),
+            .height = static_cast<uint32_t>(swapchain.displaySize_.height),
+            .layers = 1,
+    };
+    fbCreateInfo.attachmentCount = 1;
+
+    CALL_VK(vkCreateFramebuffer(device.device_, &fbCreateInfo, nullptr,
+                                &swapchain.framebuffers_[i]));
+  }
 }
 
 } // namespace android

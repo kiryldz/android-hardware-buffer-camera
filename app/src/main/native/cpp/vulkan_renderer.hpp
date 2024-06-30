@@ -24,16 +24,17 @@ protected:
     VkApplicationInfo appInfo = {
             .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
             .pNext = nullptr,
-            .pApplicationName = "tutorial05_triangle_window",
+            .pApplicationName = "fast_camera",
             .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-            .pEngineName = "tutorial",
+            .pEngineName = "fast_camera",
             .engineVersion = VK_MAKE_VERSION(1, 0, 0),
             .apiVersion = VK_MAKE_VERSION(1, 0, 0),
     };
 
-    // create a device
-    CreateVulkanDevice(&appInfo);
-    CreateSwapChain();
+    createVulkanDevice(&appInfo);
+    createSwapChain();
+    createRenderPass();
+    createFrameBuffers();
 
     return true;
   }
@@ -134,9 +135,13 @@ private:
 
   ///////// Functions
 
-  void CreateVulkanDevice(VkApplicationInfo* appInfo);
+  void createVulkanDevice(VkApplicationInfo* appInfo);
 
-  void CreateSwapChain();
+  void createSwapChain();
+
+  void createRenderPass();
+
+  void createFrameBuffers();
 
   ///////// Callbacks for AChoreographer and ALooper stored as private static functions
 
