@@ -280,5 +280,269 @@ void VulkanRenderer::createFrameBuffers() {
   }
 }
 
+void VulkanRenderer::createGraphicsPipeline() {
+  LOGI("->createGraphicsPipeline");
+  memset(&gfxPipeline, 0, sizeof(gfxPipeline));
+
+  const VkDescriptorSetLayoutBinding descriptorSetLayoutBinding{
+          .binding = 0,
+          .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+          .descriptorCount = 1,
+          .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .pImmutableSamplers = nullptr,
+  };
+  const VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
+          .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+          .pNext = nullptr,
+          .bindingCount = 1,
+          .pBindings = &descriptorSetLayoutBinding,
+  };
+  CALL_VK(vkCreateDescriptorSetLayout(device.device_,
+                                      &descriptorSetLayoutCreateInfo, nullptr,
+                                      &gfxPipeline.dscLayout_));
+  VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+          .pNext = nullptr,
+          .setLayoutCount = 1,
+          .pSetLayouts = &gfxPipeline.dscLayout_,
+          .pushConstantRangeCount = 0,
+          .pPushConstantRanges = nullptr,
+  };
+  CALL_VK(vkCreatePipelineLayout(device.device_, &pipelineLayoutCreateInfo,
+                                 nullptr, &gfxPipeline.layout_));
+
+  // No dynamic state in that tutorial
+  VkPipelineDynamicStateCreateInfo dynamicStateInfo{
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+          .pNext = nullptr,
+          .dynamicStateCount = 0,
+          .pDynamicStates = nullptr};
+
+  VkShaderModule vertexShader, fragmentShader;
+  buildShaderFromFile(vertexShaderSource,
+                      VK_SHADER_STAGE_VERTEX_BIT,
+                      device.device_,
+                      &vertexShader);
+  buildShaderFromFile(fragmentShaderSource,
+                      VK_SHADER_STAGE_FRAGMENT_BIT,
+                      device.device_,
+                      &fragmentShader);
+  // Specify vertex and fragment shader stages
+  VkPipelineShaderStageCreateInfo shaderStages[2]{
+          {
+                  .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                  .pNext = nullptr,
+                  .flags = 0,
+                  .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                  .module = vertexShader,
+                  .pName = "main",
+                  .pSpecializationInfo = nullptr,
+          },
+          {
+                  .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                  .pNext = nullptr,
+                  .flags = 0,
+                  .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                  .module = fragmentShader,
+                  .pName = "main",
+                  .pSpecializationInfo = nullptr,
+          }};
+
+  VkViewport viewports {
+          .x = 0,
+          .y = 0,
+          .width = (float)swapchain.displaySize_.width,
+          .height = (float)swapchain.displaySize_.height,
+          .minDepth = 0.0f,
+          .maxDepth = 1.0f,
+  };
+
+  VkRect2D scissor = {
+          .offset = {.x = 0, .y = 0,},
+          .extent = swapchain.displaySize_,
+  };
+  // Specify viewport info
+  VkPipelineViewportStateCreateInfo viewportInfo{
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+          .pNext = nullptr,
+          .viewportCount = 1,
+          .pViewports = &viewports,
+          .scissorCount = 1,
+          .pScissors = &scissor,
+  };
+
+  // Specify multisample info
+  VkSampleMask sampleMask = ~0u;
+  VkPipelineMultisampleStateCreateInfo multisampleInfo{
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+          .pNext = nullptr,
+          .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+          .sampleShadingEnable = VK_FALSE,
+          .minSampleShading = 0,
+          .pSampleMask = &sampleMask,
+          .alphaToCoverageEnable = VK_FALSE,
+          .alphaToOneEnable = VK_FALSE,
+  };
+
+  // Specify color blend state
+  VkPipelineColorBlendAttachmentState attachmentStates{
+          .blendEnable = VK_FALSE,
+          .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                            VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+  };
+  VkPipelineColorBlendStateCreateInfo colorBlendInfo{
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = 0,
+          .logicOpEnable = VK_FALSE,
+          .logicOp = VK_LOGIC_OP_COPY,
+          .attachmentCount = 1,
+          .pAttachments = &attachmentStates,
+  };
+
+  // Specify rasterizer info
+  VkPipelineRasterizationStateCreateInfo rasterInfo{
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+          .pNext = nullptr,
+          .depthClampEnable = VK_FALSE,
+          .rasterizerDiscardEnable = VK_FALSE,
+          .polygonMode = VK_POLYGON_MODE_FILL,
+          .cullMode = VK_CULL_MODE_NONE,
+          .frontFace = VK_FRONT_FACE_CLOCKWISE,
+          .depthBiasEnable = VK_FALSE,
+          .lineWidth = 1,
+  };
+
+  // Specify input assembler state
+  VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+          .pNext = nullptr,
+          .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+          .primitiveRestartEnable = VK_FALSE,
+  };
+
+  // Specify vertex input state
+  VkVertexInputBindingDescription vertex_input_bindings{
+          .binding = 0,
+          .stride = 5 * sizeof(float),
+          .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+  };
+  VkVertexInputAttributeDescription vertex_input_attributes[2]{
+          {
+                  .location = 0,
+                  .binding = 0,
+                  .format = VK_FORMAT_R32G32B32_SFLOAT,
+                  .offset = 0,
+          },
+          {
+                  .location = 1,
+                  .binding = 0,
+                  .format = VK_FORMAT_R32G32_SFLOAT,
+                  .offset = sizeof(float) * 3,
+          }};
+  VkPipelineVertexInputStateCreateInfo vertexInputInfo{
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+          .pNext = nullptr,
+          .vertexBindingDescriptionCount = 1,
+          .pVertexBindingDescriptions = &vertex_input_bindings,
+          .vertexAttributeDescriptionCount = 2,
+          .pVertexAttributeDescriptions = vertex_input_attributes,
+  };
+
+  // Create the pipeline cache
+  VkPipelineCacheCreateInfo pipelineCacheInfo{
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = 0,  // reserved, must be 0
+          .initialDataSize = 0,
+          .pInitialData = nullptr,
+  };
+
+  CALL_VK(vkCreatePipelineCache(device.device_, &pipelineCacheInfo, nullptr,
+                                &gfxPipeline.cache_));
+
+  // Create the pipeline
+  VkGraphicsPipelineCreateInfo pipelineCreateInfo{
+          .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = 0,
+          .stageCount = 2,
+          .pStages = shaderStages,
+          .pVertexInputState = &vertexInputInfo,
+          .pInputAssemblyState = &inputAssemblyInfo,
+          .pTessellationState = nullptr,
+          .pViewportState = &viewportInfo,
+          .pRasterizationState = &rasterInfo,
+          .pMultisampleState = &multisampleInfo,
+          .pDepthStencilState = nullptr,
+          .pColorBlendState = &colorBlendInfo,
+          .pDynamicState = &dynamicStateInfo,
+          .layout = gfxPipeline.layout_,
+          .renderPass = renderInfo.renderPass_,
+          .subpass = 0,
+          .basePipelineHandle = VK_NULL_HANDLE,
+          .basePipelineIndex = 0,
+  };
+
+  VkResult pipelineResult = vkCreateGraphicsPipelines(
+          device.device_, gfxPipeline.cache_, 1, &pipelineCreateInfo, nullptr,
+          &gfxPipeline.pipeline_);
+
+  // We don't need the shaders anymore, we can release their memory
+  vkDestroyShaderModule(device.device_, vertexShader, nullptr);
+  vkDestroyShaderModule(device.device_, fragmentShader, nullptr);
+  LOGI("<-createGraphicsPipeline");
+}
+
+shaderc_shader_kind VulkanRenderer::getShadercShaderType(VkShaderStageFlagBits type) {
+  switch (type) {
+    case VK_SHADER_STAGE_VERTEX_BIT:
+      return shaderc_glsl_vertex_shader;
+    case VK_SHADER_STAGE_FRAGMENT_BIT:
+      return shaderc_glsl_fragment_shader;
+    case VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT:
+      return shaderc_glsl_tess_control_shader;
+    case VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT:
+      return shaderc_glsl_tess_evaluation_shader;
+    case VK_SHADER_STAGE_GEOMETRY_BIT:
+      return shaderc_glsl_geometry_shader;
+    case VK_SHADER_STAGE_COMPUTE_BIT:
+      return shaderc_glsl_compute_shader;
+    default:
+      LOGE("invalid VKShaderStageFlagBits: type = %08x", type);
+  }
+  return static_cast<shaderc_shader_kind>(-1);
+}
+
+VkResult VulkanRenderer::buildShaderFromFile(const char* shaderSource,
+                                             VkShaderStageFlagBits type, VkDevice vkDevice,
+                                             VkShaderModule* shaderOut) {
+  // compile into spir-V shader
+  shaderc_compiler_t compiler = shaderc_compiler_initialize();
+  shaderc_compilation_result_t spvShader = shaderc_compile_into_spv(
+          compiler, shaderSource, strlen(shaderSource), getShadercShaderType(type),
+          "shaderc_error", "main", nullptr);
+  if (shaderc_result_get_compilation_status(spvShader) !=
+      shaderc_compilation_status_success) {
+    return static_cast<VkResult>(-1);
+  }
+
+  // build vulkan shader module
+  VkShaderModuleCreateInfo shaderModuleCreateInfo{
+          .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = 0,
+          .codeSize = shaderc_result_get_length(spvShader),
+          .pCode = (const uint32_t*)shaderc_result_get_bytes(spvShader),
+  };
+  VkResult result = vkCreateShaderModule(vkDevice, &shaderModuleCreateInfo,
+                                         nullptr, shaderOut);
+
+  shaderc_result_release(spvShader);
+  shaderc_compiler_release(compiler);
+
+  return result;
+}
+
 } // namespace android
 } // namespace engine

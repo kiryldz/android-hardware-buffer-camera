@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <shaderc/shaderc.hpp>
 
 #include "base_renderer.hpp"
 #include "vulkan_wrapper.h"
@@ -35,6 +36,7 @@ protected:
     createSwapChain();
     createRenderPass();
     createFrameBuffers();
+    createGraphicsPipeline();
 
     return true;
   }
@@ -67,6 +69,28 @@ protected:
   }
 
 private:
+  ///////// Shaders
+  const char *vertexShaderSource = "#version 400\n"
+                                   "#extension GL_ARB_separate_shader_objects : enable\n"
+                                   "#extension GL_ARB_shading_language_420pack : enable\n"
+                                   "layout (location = 0) in vec4 pos;\n"
+                                   "layout (location = 1) in vec2 attr;\n"
+                                   "layout (location = 0) out vec2 texcoord;\n"
+                                   "void main() {\n"
+                                   "   texcoord = attr;\n"
+                                   "   gl_Position = pos;\n"
+                                   "}";
+
+  const char  *fragmentShaderSource = "#version 400\n"
+                                      "#extension GL_ARB_separate_shader_objects : enable\n"
+                                      "#extension GL_ARB_shading_language_420pack : enable\n"
+                                      "layout (binding = 0) uniform sampler2D tex;\n"
+                                      "layout (location = 0) in vec2 texcoord;\n"
+                                      "layout (location = 0) out vec4 uFragColor;\n"
+                                      "void main() {\n"
+                                      "   uFragColor = texture(tex, texcoord);\n"
+                                      "}";
+
   ///////// Structs and variables
 
   struct VulkanDeviceInfo {
@@ -142,6 +166,15 @@ private:
   void createRenderPass();
 
   void createFrameBuffers();
+
+  void createGraphicsPipeline();
+
+  VkResult buildShaderFromFile(const char* shaderSource,
+                               VkShaderStageFlagBits type,
+                               VkDevice vkDevice,
+                               VkShaderModule* shaderOut);
+
+  shaderc_shader_kind getShadercShaderType(VkShaderStageFlagBits type);
 
   ///////// Callbacks for AChoreographer and ALooper stored as private static functions
 
