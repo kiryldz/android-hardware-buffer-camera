@@ -63,11 +63,15 @@ void VulkanRenderer::createRenderPass() {
 void VulkanRenderer::createVulkanDevice(VkApplicationInfo *appInfo) {
   std::vector<const char*> instance_extensions;
   std::vector<const char*> device_extensions;
+  // TODO add them to debug build only!
+  std::vector<const char*> validation_layers;
 
   instance_extensions.push_back("VK_KHR_surface");
   instance_extensions.push_back("VK_KHR_android_surface");
 
   device_extensions.push_back("VK_KHR_swapchain");
+
+  validation_layers.push_back("VK_LAYER_KHRONOS_validation");
 
   // **********************************************************
   // Create the Vulkan instance
@@ -75,10 +79,9 @@ void VulkanRenderer::createVulkanDevice(VkApplicationInfo *appInfo) {
           .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
           .pNext = nullptr,
           .pApplicationInfo = appInfo,
-          .enabledLayerCount = 0,
-          .ppEnabledLayerNames = nullptr,
-          .enabledExtensionCount =
-          static_cast<uint32_t>(instance_extensions.size()),
+          .enabledLayerCount = static_cast<uint32_t>(validation_layers.size()),
+          .ppEnabledLayerNames = validation_layers.data(),
+          .enabledExtensionCount = static_cast<uint32_t>(instance_extensions.size()),
           .ppEnabledExtensionNames = instance_extensions.data(),
   };
   CALL_VK(vkCreateInstance(&instanceCreateInfo, nullptr, &device.instance_));
