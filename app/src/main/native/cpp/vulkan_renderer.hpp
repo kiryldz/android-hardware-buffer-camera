@@ -39,6 +39,8 @@ protected:
     createTexture();
     createBuffers();
     createGraphicsPipeline();
+    putAllTogether();
+    device.initialized_ = true;
     return true;
   }
 
@@ -55,12 +57,11 @@ protected:
   }
 
   bool couldRender() const override {
-    // TODO
-    return false;
+    return device.initialized_;
   }
 
   void render() override {
-    // TODO
+    renderImpl();
   }
 
   void postChoreographerCallback() override {
@@ -174,6 +175,8 @@ private:
 
   void createGraphicsPipeline();
 
+  void putAllTogether();
+
   ////// Helper functions
 
   void mapMemoryTypeToIndex(uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex);
@@ -191,6 +194,8 @@ private:
   shaderc_shader_kind getShadercShaderType(VkShaderStageFlagBits type);
 
   ///////// Callbacks for AChoreographer and ALooper stored as private static functions
+
+  void renderImpl();
 
   static void doFrame(long timeStampNanos, void *data);
 };

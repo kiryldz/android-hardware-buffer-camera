@@ -567,9 +567,9 @@ void VulkanRenderer::createTexture() {
 
   for (int i = 0; i < imgWidth; i++) {
     for (int j = 0; j < imgHeight; j++) {
-      imageData[((imgWidth * i) + j) * 4] = 255;
+      imageData[((imgWidth * i) + j) * 4] = 0;
       imageData[((imgWidth * i) + j) * 4 + 1] = 0;
-      imageData[((imgWidth * i) + j) * 4 + 2] = 0;
+      imageData[((imgWidth * i) + j) * 4 + 2] = 255;
       imageData[((imgWidth * i) + j) * 4 + 3] = 0;
     }
   }
@@ -942,6 +942,151 @@ void VulkanRenderer::setImageLayout(VkCommandBuffer cmdBuffer, VkImage image,
 
   vkCmdPipelineBarrier(cmdBuffer, srcStages, destStages, 0, 0, nullptr, 0, nullptr, 1,
                        &imageMemoryBarrier);
+}
+
+void VulkanRenderer::putAllTogether() {
+  LOGI("->putAllTogether");
+  // Create a pool of command buffers to allocate command buffer from
+  VkCommandPoolCreateInfo cmdPoolCreateInfo{
+          .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+          .queueFamilyIndex = 0,
+  };
+  CALL_VK(vkCreateCommandPool(device.device_, &cmdPoolCreateInfo, nullptr,
+                              &renderInfo.cmdPool_));
+
+  // Record a command buffer that just clear the screen
+  // 1 command buffer draw in 1 framebuffer
+  // In our case we need 2 command as we have 2 framebuffer
+  renderInfo.cmdBufferLen_ = swapchain.swapchainLength_;
+  renderInfo.cmdBuffer_ = new VkCommandBuffer[swapchain.swapchainLength_];
+  VkCommandBufferAllocateInfo cmdBufferCreateInfo{
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+          .pNext = nullptr,
+          .commandPool = renderInfo.cmdPool_,
+          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          .commandBufferCount = renderInfo.cmdBufferLen_,
+  };
+  CALL_VK(vkAllocateCommandBuffers(device.device_, &cmdBufferCreateInfo,
+                                   renderInfo.cmdBuffer_));
+
+  for (int bufferIndex = 0; bufferIndex < swapchain.swapchainLength_; bufferIndex++) {
+    // We start by creating and declare the "beginning" our command buffer
+    VkCommandBufferBeginInfo cmdBufferBeginInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .pInheritanceInfo = nullptr,
+    };
+    CALL_VK(vkBeginCommandBuffer(renderInfo.cmdBuffer_[bufferIndex],
+                                 &cmdBufferBeginInfo));
+
+    // transition the buffer into color attachment
+    setImageLayout(renderInfo.cmdBuffer_[bufferIndex],
+                   swapchain.displayImages_[bufferIndex],
+                   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+    // Now we start a renderpass. Any draw command has to be recorded in a
+    // renderpass
+    VkClearValue clearVals{
+            .color { .float32 { 0.0f, 0.34f, 0.90f, 1.0f,}},
+    };
+
+    VkRenderPassBeginInfo renderPassBeginInfo{
+            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .pNext = nullptr,
+            .renderPass = renderInfo.renderPass_,
+            .framebuffer = swapchain.framebuffers_[bufferIndex],
+            .renderArea = {.offset =
+                    {
+                            .x = 0, .y = 0,
+                    },
+                    .extent = swapchain.displaySize_},
+            .clearValueCount = 1,
+            .pClearValues = &clearVals};
+    vkCmdBeginRenderPass(renderInfo.cmdBuffer_[bufferIndex], &renderPassBeginInfo,
+                         VK_SUBPASS_CONTENTS_INLINE);
+    // Bind what is necessary to the command buffer
+    vkCmdBindPipeline(renderInfo.cmdBuffer_[bufferIndex],
+                      VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_);
+    vkCmdBindDescriptorSets(
+            renderInfo.cmdBuffer_[bufferIndex], VK_PIPELINE_BIND_POINT_GRAPHICS,
+            gfxPipeline.layout_, 0, 1, &gfxPipeline.descSet_, 0, nullptr);
+    VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(renderInfo.cmdBuffer_[bufferIndex], 0, 1,
+                           &buffers.vertexBuf_, &offset);
+
+    vkCmdDraw(renderInfo.cmdBuffer_[bufferIndex], 4, 1, 0, 0);
+    vkCmdEndRenderPass(renderInfo.cmdBuffer_[bufferIndex]);
+    setImageLayout(renderInfo.cmdBuffer_[bufferIndex],
+                   swapchain.displayImages_[bufferIndex],
+                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+    CALL_VK(vkEndCommandBuffer(renderInfo.cmdBuffer_[bufferIndex]));
+  }
+
+  // We need to create a fence to be able, in the main loop, to wait for our
+  // draw command(s) to finish before swapping the framebuffers
+  VkFenceCreateInfo fenceCreateInfo{
+          .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = 0,
+  };
+  CALL_VK(vkCreateFence(device.device_, &fenceCreateInfo, nullptr, &renderInfo.fence_));
+
+  // We need to create a semaphore to be able to wait, in the main loop, for our
+  // framebuffer to be available for us before drawing.
+  VkSemaphoreCreateInfo semaphoreCreateInfo{
+          .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = 0,
+  };
+  CALL_VK(vkCreateSemaphore(device.device_, &semaphoreCreateInfo, nullptr,&renderInfo.semaphore_));
+  LOGI("<-putAllTogether");
+}
+
+void VulkanRenderer::renderImpl() {
+  uint32_t nextIndex;
+  // Get the framebuffer index we should draw in
+  CALL_VK(vkAcquireNextImageKHR(device.device_, swapchain.swapchain_,
+                                UINT64_MAX, renderInfo.semaphore_, VK_NULL_HANDLE,
+                                &nextIndex));
+  CALL_VK(vkResetFences(device.device_, 1, &renderInfo.fence_));
+
+  VkPipelineStageFlags waitStageMask =
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  VkSubmitInfo submit_info = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+          .pNext = nullptr,
+          .waitSemaphoreCount = 1,
+          .pWaitSemaphores = &renderInfo.semaphore_,
+          .pWaitDstStageMask = &waitStageMask,
+          .commandBufferCount = 1,
+          .pCommandBuffers = &renderInfo.cmdBuffer_[nextIndex],
+          .signalSemaphoreCount = 0,
+          .pSignalSemaphores = nullptr};
+  CALL_VK(vkQueueSubmit(device.queue_, 1, &submit_info, renderInfo.fence_));
+  CALL_VK(vkWaitForFences(device.device_, 1, &renderInfo.fence_, VK_TRUE, 100000000));
+
+  LOGI("Drawing frames......");
+
+  VkResult result;
+  VkPresentInfoKHR presentInfo{
+          .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+          .pNext = nullptr,
+          .waitSemaphoreCount = 0,
+          .pWaitSemaphores = nullptr,
+          .swapchainCount = 1,
+          .pSwapchains = &swapchain.swapchain_,
+          .pImageIndices = &nextIndex,
+          .pResults = &result,
+  };
+  vkQueuePresentKHR(device.queue_, &presentInfo);
 }
 
 } // namespace android
