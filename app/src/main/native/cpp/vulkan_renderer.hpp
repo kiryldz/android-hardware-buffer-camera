@@ -39,7 +39,6 @@ protected:
     createTexture();
     createBuffers();
     createGraphicsPipeline();
-
     return true;
   }
 
@@ -178,6 +177,11 @@ private:
   ////// Helper functions
 
   void mapMemoryTypeToIndex(uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex);
+
+  void setImageLayout(VkCommandBuffer cmdBuffer, VkImage image,
+                      VkImageLayout oldImageLayout, VkImageLayout newImageLayout,
+                      VkPipelineStageFlags srcStages,
+                      VkPipelineStageFlags destStages);
 
   VkResult buildShaderFromFile(const char* shaderSource,
                                VkShaderStageFlagBits type,

@@ -545,7 +545,260 @@ VkResult VulkanRenderer::buildShaderFromFile(const char* shaderSource,
 }
 
 void VulkanRenderer::createTexture() {
+  LOGI("->createTexture");
+  texture_object tex_obj;
 
+  // Check for linear supportability
+  VkFormatProperties props;
+  bool needBlit = true;
+  vkGetPhysicalDeviceFormatProperties(device.gpuDevice_, kTexFmt, &props);
+  assert((props.linearTilingFeatures | props.optimalTilingFeatures) &
+         VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+
+  if (props.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) {
+    // linear format supporting the required texture
+    needBlit = false;
+  }
+
+  // temp - create simply red texture
+  uint32_t imgWidth = 256;
+  uint32_t imgHeight = 256;
+  auto imageData = new unsigned char [256 * 256 * 4];
+
+  for (int i = 0; i < imgWidth; i++) {
+    for (int j = 0; j < imgHeight; j++) {
+      imageData[((imgWidth * i) + j) * 4] = 255;
+      imageData[((imgWidth * i) + j) * 4 + 1] = 0;
+      imageData[((imgWidth * i) + j) * 4 + 2] = 0;
+      imageData[((imgWidth * i) + j) * 4 + 3] = 0;
+    }
+  }
+
+  // Allocate the linear texture so texture could be copied over
+  VkImageCreateInfo image_create_info = {
+          .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = 0,
+          .imageType = VK_IMAGE_TYPE_2D,
+          .format = kTexFmt,
+          .extent = {static_cast<uint32_t>(imgWidth),
+                     static_cast<uint32_t>(imgHeight), 1},
+          .mipLevels = 1,
+          .arrayLayers = 1,
+          .samples = VK_SAMPLE_COUNT_1_BIT,
+          .tiling = VK_IMAGE_TILING_LINEAR,
+          .usage = (needBlit ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+                             : VK_IMAGE_USAGE_SAMPLED_BIT),
+          .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+          .queueFamilyIndexCount = 1,
+          .pQueueFamilyIndices = &device.queueFamilyIndex_,
+          .initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED,
+  };
+  VkMemoryAllocateInfo mem_alloc = {
+          .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+          .pNext = nullptr,
+          .allocationSize = 0,
+          .memoryTypeIndex = 0,
+  };
+
+  VkMemoryRequirements mem_reqs;
+  CALL_VK(vkCreateImage(device.device_, &image_create_info, nullptr,
+                        &tex_obj.image));
+  vkGetImageMemoryRequirements(device.device_, tex_obj.image, &mem_reqs);
+  mem_alloc.allocationSize = mem_reqs.size;
+  mapMemoryTypeToIndex(mem_reqs.memoryTypeBits,
+                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                       &mem_alloc.memoryTypeIndex);
+  CALL_VK(vkAllocateMemory(device.device_, &mem_alloc, nullptr, &tex_obj.mem));
+  CALL_VK(vkBindImageMemory(device.device_, tex_obj.image, tex_obj.mem, 0));
+
+  const VkImageSubresource subres = {
+          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .arrayLayer = 0,
+  };
+  VkSubresourceLayout layout;
+  void* data;
+
+  vkGetImageSubresourceLayout(device.device_, tex_obj.image, &subres,
+                              &layout);
+  CALL_VK(vkMapMemory(device.device_, tex_obj.mem, 0,
+                      mem_alloc.allocationSize, 0, &data));
+
+  for (int32_t y = 0; y < imgHeight; y++) {
+    unsigned char* row = (unsigned char*)((char*)data + layout.rowPitch * y);
+    for (int32_t x = 0; x < imgWidth; x++) {
+      row[x * 4] = imageData[(x + y * imgWidth) * 4];
+      row[x * 4 + 1] = imageData[(x + y * imgWidth) * 4 + 1];
+      row[x * 4 + 2] = imageData[(x + y * imgWidth) * 4 + 2];
+      row[x * 4 + 3] = imageData[(x + y * imgWidth) * 4 + 3];
+    }
+  }
+
+  vkUnmapMemory(device.device_, tex_obj.mem);
+
+  tex_obj.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+  VkCommandPoolCreateInfo cmdPoolCreateInfo{
+          .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+          .queueFamilyIndex = device.queueFamilyIndex_,
+  };
+
+  VkCommandPool cmdPool;
+  CALL_VK(vkCreateCommandPool(device.device_, &cmdPoolCreateInfo, nullptr,
+                              &cmdPool));
+
+  VkCommandBuffer gfxCmd;
+  const VkCommandBufferAllocateInfo cmd = {
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+          .pNext = nullptr,
+          .commandPool = cmdPool,
+          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          .commandBufferCount = 1,
+  };
+
+  CALL_VK(vkAllocateCommandBuffers(device.device_, &cmd, &gfxCmd));
+  VkCommandBufferBeginInfo cmd_buf_info = {
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .pNext = nullptr,
+          .flags = 0,
+          .pInheritanceInfo = nullptr};
+  CALL_VK(vkBeginCommandBuffer(gfxCmd, &cmd_buf_info));
+
+  // If linear is supported, we are done
+  VkImage stageImage = VK_NULL_HANDLE;
+  VkDeviceMemory stageMem = VK_NULL_HANDLE;
+  if (!needBlit) {
+    setImageLayout(gfxCmd, tex_obj.image, VK_IMAGE_LAYOUT_PREINITIALIZED,
+                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                   VK_PIPELINE_STAGE_HOST_BIT,
+                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+  } else {
+    // save current image and mem as staging image and memory
+    stageImage = tex_obj.image;
+    stageMem = tex_obj.mem;
+    tex_obj.image = VK_NULL_HANDLE;
+    tex_obj.mem = VK_NULL_HANDLE;
+
+    // Create a tile texture to blit into
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.usage =
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    CALL_VK(vkCreateImage(device.device_, &image_create_info, nullptr,
+                          &tex_obj.image));
+    vkGetImageMemoryRequirements(device.device_, tex_obj.image, &mem_reqs);
+
+    mem_alloc.allocationSize = mem_reqs.size;
+    mapMemoryTypeToIndex(
+            mem_reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            &mem_alloc.memoryTypeIndex);
+    CALL_VK(vkAllocateMemory(device.device_, &mem_alloc, nullptr, &tex_obj.mem));
+    CALL_VK(vkBindImageMemory(device.device_, tex_obj.image, tex_obj.mem, 0));
+
+    // transitions image out of UNDEFINED type
+    setImageLayout(gfxCmd, stageImage, VK_IMAGE_LAYOUT_PREINITIALIZED,
+                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    setImageLayout(gfxCmd, tex_obj.image, VK_IMAGE_LAYOUT_UNDEFINED,
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    VkImageCopy bltInfo{
+            .srcSubresource {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+            },
+            .srcOffset { .x = 0, .y = 0, .z = 0 },
+            .dstSubresource {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+            },
+            .dstOffset { .x = 0, .y = 0, .z = 0},
+            .extent { .width = imgWidth, .height = imgHeight, .depth = 1,},
+    };
+    vkCmdCopyImage(gfxCmd, stageImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   tex_obj.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+                   &bltInfo);
+
+    setImageLayout(gfxCmd, tex_obj.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                   VK_PIPELINE_STAGE_TRANSFER_BIT,
+                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+  }
+
+  CALL_VK(vkEndCommandBuffer(gfxCmd));
+  VkFenceCreateInfo fenceInfo = {
+          .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = 0,
+  };
+  VkFence fence;
+  CALL_VK(vkCreateFence(device.device_, &fenceInfo, nullptr, &fence));
+
+  VkSubmitInfo submitInfo = {
+          .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+          .pNext = nullptr,
+          .waitSemaphoreCount = 0,
+          .pWaitSemaphores = nullptr,
+          .pWaitDstStageMask = nullptr,
+          .commandBufferCount = 1,
+          .pCommandBuffers = &gfxCmd,
+          .signalSemaphoreCount = 0,
+          .pSignalSemaphores = nullptr,
+  };
+  CALL_VK(vkQueueSubmit(device.queue_, 1, &submitInfo, fence) != VK_SUCCESS);
+  CALL_VK(vkWaitForFences(device.device_, 1, &fence, VK_TRUE, 100000000) !=
+          VK_SUCCESS);
+  vkDestroyFence(device.device_, fence, nullptr);
+
+  vkFreeCommandBuffers(device.device_, cmdPool, 1, &gfxCmd);
+  vkDestroyCommandPool(device.device_, cmdPool, nullptr);
+  if (stageImage != VK_NULL_HANDLE) {
+    vkDestroyImage(device.device_, stageImage, nullptr);
+    vkFreeMemory(device.device_, stageMem, nullptr);
+  }
+
+  const VkSamplerCreateInfo sampler = {
+          .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+          .pNext = nullptr,
+          .magFilter = VK_FILTER_NEAREST,
+          .minFilter = VK_FILTER_NEAREST,
+          .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+          .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+          .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+          .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+          .mipLodBias = 0.0f,
+          .maxAnisotropy = 1,
+          .compareOp = VK_COMPARE_OP_NEVER,
+          .minLod = 0.0f,
+          .maxLod = 0.0f,
+          .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+          .unnormalizedCoordinates = VK_FALSE,
+  };
+  VkImageViewCreateInfo view = {
+          .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = 0,
+          .image = VK_NULL_HANDLE,
+          .viewType = VK_IMAGE_VIEW_TYPE_2D,
+          .format = kTexFmt,
+          .components =
+                  {
+                          VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G,
+                          VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A,
+                  },
+          .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
+  };
+
+  CALL_VK(vkCreateSampler(device.device_, &sampler, nullptr,
+                          &tex_obj.sampler));
+  view.image = tex_obj.image;
+  CALL_VK(vkCreateImageView(device.device_, &view, nullptr, &tex_obj.view));
+  LOGI("<-createTexture");
 }
 
 void VulkanRenderer::createBuffers() {
@@ -618,6 +871,77 @@ void VulkanRenderer::mapMemoryTypeToIndex(uint32_t typeBits,
     }
     typeBits >>= 1;
   }
+}
+
+void VulkanRenderer::setImageLayout(VkCommandBuffer cmdBuffer, VkImage image,
+                                    VkImageLayout oldImageLayout, VkImageLayout newImageLayout,
+                                    VkPipelineStageFlags srcStages,
+                                    VkPipelineStageFlags destStages) {
+  VkImageMemoryBarrier imageMemoryBarrier = {
+          .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+          .pNext = nullptr,
+          .srcAccessMask = 0,
+          .dstAccessMask = 0,
+          .oldLayout = oldImageLayout,
+          .newLayout = newImageLayout,
+          .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .image = image,
+          .subresourceRange =
+                  {
+                          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                          .baseMipLevel = 0,
+                          .levelCount = 1,
+                          .baseArrayLayer = 0,
+                          .layerCount = 1,
+                  },
+  };
+
+  switch (oldImageLayout) {
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+      imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+      break;
+
+    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+      imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+      break;
+
+    case VK_IMAGE_LAYOUT_PREINITIALIZED:
+      imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+      break;
+
+    default:
+      break;
+  }
+
+  switch (newImageLayout) {
+    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+      imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+      break;
+
+    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+      imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      break;
+
+    case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+      imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+      break;
+
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+      imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+      break;
+
+    case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+      imageMemoryBarrier.dstAccessMask =
+              VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+      break;
+
+    default:
+      break;
+  }
+
+  vkCmdPipelineBarrier(cmdBuffer, srcStages, destStages, 0, 0, nullptr, 0, nullptr, 1,
+                       &imageMemoryBarrier);
 }
 
 } // namespace android
