@@ -36,6 +36,8 @@ protected:
     createSwapChain();
     createRenderPass();
     createFrameBuffers();
+    createTexture();
+    createBuffers();
     createGraphicsPipeline();
 
     return true;
@@ -157,7 +159,7 @@ private:
   };
   VulkanRenderInfo renderInfo;
 
-  ///////// Functions
+  ///////// Create functions
 
   void createVulkanDevice(VkApplicationInfo* appInfo);
 
@@ -167,7 +169,15 @@ private:
 
   void createFrameBuffers();
 
+  void createTexture();
+
+  void createBuffers();
+
   void createGraphicsPipeline();
+
+  ////// Helper functions
+
+  void mapMemoryTypeToIndex(uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex);
 
   VkResult buildShaderFromFile(const char* shaderSource,
                                VkShaderStageFlagBits type,

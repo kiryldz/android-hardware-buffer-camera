@@ -417,14 +417,14 @@ void VulkanRenderer::createGraphicsPipeline() {
   VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{
           .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
           .pNext = nullptr,
-          .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+          .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
           .primitiveRestartEnable = VK_FALSE,
   };
 
   // Specify vertex input state
   VkVertexInputBindingDescription vertex_input_bindings{
           .binding = 0,
-          .stride = 5 * sizeof(float),
+          .stride = 4 * sizeof(float),
           .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
   };
   VkVertexInputAttributeDescription vertex_input_attributes[2]{
@@ -438,7 +438,7 @@ void VulkanRenderer::createGraphicsPipeline() {
                   .location = 1,
                   .binding = 0,
                   .format = VK_FORMAT_R32G32_SFLOAT,
-                  .offset = sizeof(float) * 3,
+                  .offset = sizeof(float) * 2,
           }};
   VkPipelineVertexInputStateCreateInfo vertexInputInfo{
           .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -542,6 +542,82 @@ VkResult VulkanRenderer::buildShaderFromFile(const char* shaderSource,
   shaderc_compiler_release(compiler);
 
   return result;
+}
+
+void VulkanRenderer::createTexture() {
+
+}
+
+void VulkanRenderer::createBuffers() {
+  // Vertex positions
+  const float vertexData[] = {
+          -1.0f, -1.0f, 0.0f,0.0f,
+          1.0f, -1.0f, 1.0f,  0.0f,
+          -1.0f, 1.0f,0.0f, 1.0f,
+          1.0f, 1.0f, 1.0f, 1.0f,
+  };
+
+  // Create a vertex buffer
+  VkBufferCreateInfo createBufferInfo{
+          .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = 0,
+          .size = sizeof(vertexData),
+          .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+          .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+          .queueFamilyIndexCount = 1,
+          .pQueueFamilyIndices = &device.queueFamilyIndex_,
+  };
+
+  CALL_VK(vkCreateBuffer(device.device_, &createBufferInfo, nullptr,
+                         &buffers.vertexBuf_));
+
+  VkMemoryRequirements memReq;
+  vkGetBufferMemoryRequirements(device.device_, buffers.vertexBuf_, &memReq);
+
+  VkMemoryAllocateInfo allocInfo{
+          .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+          .pNext = nullptr,
+          .allocationSize = memReq.size,
+          .memoryTypeIndex = 0,  // Memory type assigned in the next step
+  };
+
+  // Assign the proper memory type for that buffer
+  mapMemoryTypeToIndex(memReq.memoryTypeBits,
+                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                       VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                       &allocInfo.memoryTypeIndex);
+
+  // Allocate memory for the buffer
+  VkDeviceMemory deviceMemory;
+  CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &deviceMemory));
+
+  void* data;
+  CALL_VK(vkMapMemory(device.device_, deviceMemory, 0, allocInfo.allocationSize,
+                      0, &data));
+  memcpy(data, vertexData, sizeof(vertexData));
+  vkUnmapMemory(device.device_, deviceMemory);
+
+  CALL_VK(vkBindBufferMemory(device.device_, buffers.vertexBuf_, deviceMemory, 0));
+}
+
+void VulkanRenderer::mapMemoryTypeToIndex(uint32_t typeBits,
+                                          VkFlags requirements_mask,
+                                          uint32_t *typeIndex) {
+  VkPhysicalDeviceMemoryProperties memoryProperties;
+  vkGetPhysicalDeviceMemoryProperties(device.gpuDevice_, &memoryProperties);
+  // Search memtypes to find first index with those properties
+  for (uint32_t i = 0; i < 32; i++) {
+    if ((typeBits & 1) == 1) {
+      // Type is available, does it match user properties?
+      if ((memoryProperties.memoryTypes[i].propertyFlags & requirements_mask) ==
+          requirements_mask) {
+        *typeIndex = i;
+        return;
+      }
+    }
+    typeBits >>= 1;
+  }
 }
 
 } // namespace android
