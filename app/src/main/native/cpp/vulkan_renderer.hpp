@@ -39,6 +39,7 @@ protected:
     createTexture();
     createBuffers();
     createGraphicsPipeline();
+    createDescriptorSet();
     putAllTogether();
     device.initialized_ = true;
     return true;
@@ -133,6 +134,7 @@ private:
     int32_t tex_height;
   } texture_object;
   static const VkFormat kTexFmt = VK_FORMAT_R8G8B8A8_UNORM;
+  struct texture_object tex_obj;
 
   struct VulkanBufferInfo {
     VkBuffer vertexBuf_;
@@ -174,6 +176,8 @@ private:
   void createBuffers();
 
   void createGraphicsPipeline();
+
+  void createDescriptorSet();
 
   void putAllTogether();
 

@@ -549,7 +549,6 @@ VkResult VulkanRenderer::buildShaderFromFile(const char* shaderSource,
 
 void VulkanRenderer::createTexture() {
   LOGI("->createTexture");
-  texture_object tex_obj;
 
   // Check for linear supportability
   VkFormatProperties props;
@@ -570,9 +569,9 @@ void VulkanRenderer::createTexture() {
 
   for (int i = 0; i < imgWidth; i++) {
     for (int j = 0; j < imgHeight; j++) {
-      imageData[((imgWidth * i) + j) * 4] = 0;
+      imageData[((imgWidth * i) + j) * 4] = 255;
       imageData[((imgWidth * i) + j) * 4 + 1] = 0;
-      imageData[((imgWidth * i) + j) * 4 + 2] = 255;
+      imageData[((imgWidth * i) + j) * 4 + 2] = 0;
       imageData[((imgWidth * i) + j) * 4 + 3] = 0;
     }
   }
@@ -1090,6 +1089,53 @@ void VulkanRenderer::renderImpl() {
           .pResults = &result,
   };
   vkQueuePresentKHR(device.queue_, &presentInfo);
+}
+
+void VulkanRenderer::createDescriptorSet() {
+  LOGI("->createDescriptorSet");
+  const VkDescriptorPoolSize type_count = {
+          .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+          .descriptorCount = 1,
+  };
+  const VkDescriptorPoolCreateInfo descriptor_pool = {
+          .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+          .pNext = nullptr,
+          .maxSets = 1,
+          .poolSizeCount = 1,
+          .pPoolSizes = &type_count,
+  };
+
+  CALL_VK(vkCreateDescriptorPool(device.device_, &descriptor_pool, nullptr,
+                                 &gfxPipeline.descPool_));
+
+  VkDescriptorSetAllocateInfo alloc_info{
+          .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+          .pNext = nullptr,
+          .descriptorPool = gfxPipeline.descPool_,
+          .descriptorSetCount = 1,
+          .pSetLayouts = &gfxPipeline.dscLayout_};
+  CALL_VK(vkAllocateDescriptorSets(device.device_, &alloc_info,
+                                   &gfxPipeline.descSet_));
+
+  VkDescriptorImageInfo texDst;
+
+  texDst.sampler = tex_obj.sampler;
+  texDst.imageView = tex_obj.view;
+  texDst.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+  VkWriteDescriptorSet writeDst{
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .pNext = nullptr,
+          .dstSet = gfxPipeline.descSet_,
+          .dstBinding = 0,
+          .dstArrayElement = 0,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+          .pImageInfo = &texDst,
+          .pBufferInfo = nullptr,
+          .pTexelBufferView = nullptr};
+  vkUpdateDescriptorSets(device.device_, 1, &writeDst, 0, nullptr);
+  LOGI("<-createDescriptorSet");
 }
 
 } // namespace android
