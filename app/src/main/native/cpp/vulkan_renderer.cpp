@@ -1121,7 +1121,8 @@ void VulkanRenderer::createDescriptorSet() {
 
   texDst.sampler = tex_obj.sampler;
   texDst.imageView = tex_obj.view;
-  texDst.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+  // changed from VK_IMAGE_LAYOUT_GENERAL to avoid validation complaining
+  texDst.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
   VkWriteDescriptorSet writeDst{
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
