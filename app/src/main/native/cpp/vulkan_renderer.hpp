@@ -27,20 +27,15 @@ protected:
             .pNext = nullptr,
             .pApplicationName = "fast_camera",
             .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-            .pEngineName = "fast_camera",
+            .pEngineName = "vulkan_engine",
             .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-            .apiVersion = VK_MAKE_VERSION(1, 0, 0),
+            .apiVersion = VK_API_VERSION_1_3,
     };
 
     createVulkanDevice(&appInfo);
     createSwapChain();
     createRenderPass();
     createFrameBuffers();
-    createTexture();
-    createBuffers();
-    createGraphicsPipeline();
-    createDescriptorSet();
-    putAllTogether();
     device.initialized_ = true;
     return true;
   }
@@ -53,12 +48,10 @@ protected:
     // TODO
   }
 
-  void hwBufferToTexture(AHardwareBuffer *buffer) override {
-    // TODO
-  }
+  void hwBufferToTexture(AHardwareBuffer *buffer) override;
 
   bool couldRender() const override {
-    return device.initialized_;
+    return device.initialized_ && device.textureDataInitialized_;
   }
 
   void render() override {
@@ -98,6 +91,7 @@ private:
 
   struct VulkanDeviceInfo {
     bool initialized_;
+    bool textureDataInitialized_;
 
     VkInstance instance_;
     VkPhysicalDevice gpuDevice_;

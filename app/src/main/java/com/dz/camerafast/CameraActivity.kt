@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.HardwareBuffer
 import android.os.Bundle
 import android.util.Log
 import android.view.SurfaceView
@@ -19,6 +20,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import java.util.concurrent.Executors
+import kotlin.experimental.and
 import kotlin.random.Random
 
 class CameraActivity : AppCompatActivity() {
@@ -97,12 +99,14 @@ class CameraActivity : AppCompatActivity() {
             imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
                 Log.i(TAG, "New image arrived!")
                 imageProxy.image?.hardwareBuffer?.let { buffer ->
+                    buffer.printSupportedUsageFlags()
                     coreEngine.feedHardwareBuffer(buffer)
                     buffer.close()
                     Log.i(TAG, "Buffer fed and closed in Java!")
                 }
                 imageProxy.close()
                 Log.i(TAG, "Image closed!")
+//                imageAnalysis.clearAnalyzer()
             }
 
             // Create a new camera selector each time, enforcing lens facing
@@ -123,6 +127,47 @@ class CameraActivity : AppCompatActivity() {
     /** Convenience method used to check if all permissions required by this app are granted */
     private fun hasPermissions(context: Context) = permissions.all {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun HardwareBuffer.printSupportedUsageFlags() {
+        val usage = usage.toInt()
+        val supportedUsages = mutableListOf<String>()
+
+        if (usage and HardwareBuffer.USAGE_CPU_READ_RARELY.toInt() != 0) {
+            supportedUsages.add("USAGE_CPU_READ_RARELY")
+        }
+        if (usage and HardwareBuffer.USAGE_CPU_READ_OFTEN.toInt() != 0) {
+            supportedUsages.add("USAGE_CPU_READ_OFTEN")
+        }
+        if (usage and HardwareBuffer.USAGE_CPU_WRITE_RARELY.toInt() != 0) {
+            supportedUsages.add("USAGE_CPU_WRITE_RARELY")
+        }
+        if (usage and HardwareBuffer.USAGE_CPU_WRITE_OFTEN.toInt() != 0) {
+            supportedUsages.add("USAGE_CPU_WRITE_OFTEN")
+        }
+        if (usage and HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE.toInt() != 0) {
+            supportedUsages.add("USAGE_GPU_SAMPLED_IMAGE")
+        }
+        if (usage and HardwareBuffer.USAGE_GPU_COLOR_OUTPUT.toInt() != 0) {
+            supportedUsages.add("USAGE_GPU_COLOR_OUTPUT")
+        }
+        if (usage and HardwareBuffer.USAGE_GPU_CUBE_MAP.toInt() != 0) {
+            supportedUsages.add("USAGE_GPU_CUBE_MAP")
+        }
+        if (usage and HardwareBuffer.USAGE_GPU_MIPMAP_COMPLETE.toInt() != 0) {
+            supportedUsages.add("USAGE_GPU_MIPMAP_COMPLETE")
+        }
+        if (usage and HardwareBuffer.USAGE_PROTECTED_CONTENT.toInt() != 0) {
+            supportedUsages.add("USAGE_PROTECTED_CONTENT")
+        }
+        if (usage and HardwareBuffer.USAGE_SENSOR_DIRECT_DATA.toInt() != 0) {
+            supportedUsages.add("USAGE_SENSOR_DIRECT_DATA")
+        }
+        if (usage and HardwareBuffer.USAGE_VIDEO_ENCODE.toInt() != 0) {
+            supportedUsages.add("USAGE_VIDEO_ENCODE")
+        }
+
+        println("Supports ${supportedUsages.joinToString(", ")}")
     }
 
     private companion object {
