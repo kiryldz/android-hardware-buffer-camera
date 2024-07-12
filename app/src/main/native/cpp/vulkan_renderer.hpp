@@ -36,6 +36,8 @@ protected:
     createSwapChain();
     createRenderPass();
     createFrameBuffers();
+    createBuffers();
+    createGraphicsPipeline();
     device.initialized_ = true;
     return true;
   }

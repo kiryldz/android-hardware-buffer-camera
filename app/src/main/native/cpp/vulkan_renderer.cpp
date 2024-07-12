@@ -557,7 +557,7 @@ void VulkanRenderer::createTexture() {
   }
   VkExternalMemoryImageCreateInfo externalMemoryImageCreateInfo = {
           .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
-          .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID
+          .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
   };
   // Allocate the linear texture so texture could be copied over
   VkImageCreateInfo image_create_info = {
@@ -566,13 +566,12 @@ void VulkanRenderer::createTexture() {
           .flags = 0,
           .imageType = VK_IMAGE_TYPE_2D,
           .format = kTexFmt,
-          .extent = {static_cast<uint32_t>(swapchain.displaySize_.width),
-                     static_cast<uint32_t>(swapchain.displaySize_.height), 1},
+          .extent = {1280,720, 1}, // TODO
           .mipLevels = 1,
           .arrayLayers = 1,
           .samples = VK_SAMPLE_COUNT_1_BIT,
-          .tiling = VK_IMAGE_TILING_LINEAR,
-          .usage = VK_IMAGE_USAGE_SAMPLED_BIT,
+          .tiling = VK_IMAGE_TILING_OPTIMAL,
+          .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
           .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
           .queueFamilyIndexCount = 1,
           .pQueueFamilyIndices = &device.queueFamilyIndex_,
@@ -581,68 +580,6 @@ void VulkanRenderer::createTexture() {
   CALL_VK(vkCreateImage(device.device_, &image_create_info, nullptr,
                         &tex_obj.image));
   tex_obj.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-//  VkCommandPoolCreateInfo cmdPoolCreateInfo{
-//          .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-//          .pNext = nullptr,
-//          .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-//          .queueFamilyIndex = device.queueFamilyIndex_,
-//  };
-//
-//  VkCommandPool cmdPool;
-//  CALL_VK(vkCreateCommandPool(device.device_, &cmdPoolCreateInfo, nullptr,
-//                              &cmdPool));
-//
-//  VkCommandBuffer gfxCmd;
-//  const VkCommandBufferAllocateInfo cmd = {
-//          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-//          .pNext = nullptr,
-//          .commandPool = cmdPool,
-//          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-//          .commandBufferCount = 1,
-//  };
-//
-//  CALL_VK(vkAllocateCommandBuffers(device.device_, &cmd, &gfxCmd));
-//  VkCommandBufferBeginInfo cmd_buf_info = {
-//          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-//          .pNext = nullptr,
-//          .flags = 0,
-//          .pInheritanceInfo = nullptr};
-//  CALL_VK(vkBeginCommandBuffer(gfxCmd, &cmd_buf_info));
-
-//  setImageLayout(gfxCmd, tex_obj.image, VK_IMAGE_LAYOUT_UNDEFINED,
-//                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-//                 VK_PIPELINE_STAGE_HOST_BIT,
-//                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-
-//  CALL_VK(vkEndCommandBuffer(gfxCmd));
-//  VkFenceCreateInfo fenceInfo = {
-//          .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-//          .pNext = nullptr,
-//          .flags = 0,
-//  };
-//  VkFence fence;
-//  CALL_VK(vkCreateFence(device.device_, &fenceInfo, nullptr, &fence));
-//
-//  VkSubmitInfo submitInfo = {
-//          .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-//          .pNext = nullptr,
-//          .waitSemaphoreCount = 0,
-//          .pWaitSemaphores = nullptr,
-//          .pWaitDstStageMask = nullptr,
-//          .commandBufferCount = 1,
-//          .pCommandBuffers = &gfxCmd,
-//          .signalSemaphoreCount = 0,
-//          .pSignalSemaphores = nullptr,
-//  };
-//  CALL_VK(vkQueueSubmit(device.queue_, 1, &submitInfo, fence) != VK_SUCCESS);
-//  CALL_VK(vkWaitForFences(device.device_, 1, &fence, VK_TRUE, 100000000) !=
-//          VK_SUCCESS);
-//  vkDestroyFence(device.device_, fence, nullptr);
-//
-//  vkFreeCommandBuffers(device.device_, cmdPool, 1, &gfxCmd);
-//  vkDestroyCommandPool(device.device_, cmdPool, nullptr);
-
   const VkSamplerCreateInfo sampler = {
           .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
           .pNext = nullptr,
@@ -849,12 +786,12 @@ void VulkanRenderer::putAllTogether() {
                                  &cmdBufferBeginInfo));
 
     // transition the buffer into color attachment
-    setImageLayout(renderInfo.cmdBuffer_[bufferIndex],
-                   swapchain.displayImages_[bufferIndex],
-                   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+//    setImageLayout(renderInfo.cmdBuffer_[bufferIndex],
+//                   swapchain.displayImages_[bufferIndex],
+//                   VK_IMAGE_LAYOUT_UNDEFINED,
+//                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+//                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+//                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
     // Now we start a renderpass. Any draw command has to be recorded in a
     // renderpass
@@ -888,12 +825,12 @@ void VulkanRenderer::putAllTogether() {
 
     vkCmdDraw(renderInfo.cmdBuffer_[bufferIndex], 4, 1, 0, 0);
     vkCmdEndRenderPass(renderInfo.cmdBuffer_[bufferIndex]);
-    setImageLayout(renderInfo.cmdBuffer_[bufferIndex],
-                   swapchain.displayImages_[bufferIndex],
-                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+//    setImageLayout(renderInfo.cmdBuffer_[bufferIndex],
+//                   swapchain.displayImages_[bufferIndex],
+//                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+//                   VK_IMAGE_LAYOUT_UNDEFINED,
+//                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+//                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
     CALL_VK(vkEndCommandBuffer(renderInfo.cmdBuffer_[bufferIndex]));
   }
 
@@ -953,6 +890,7 @@ void VulkanRenderer::renderImpl() {
           .pResults = &result,
   };
   vkQueuePresentKHR(device.queue_, &presentInfo);
+//  vkFreeDescriptorSets()
 }
 
 void VulkanRenderer::createDescriptorSet() {
@@ -1031,9 +969,14 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           .buffer = buffer,
   };
 
+  VkMemoryDedicatedAllocateInfo dedicatedAllocateInfo = {
+          .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
+          .image = tex_obj.image,
+          .buffer = VK_NULL_HANDLE,
+  };
+
   VkMemoryAllocateInfo allocInfo{
           .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-          .pNext = &importBufferInfo,
           .allocationSize = ahb_props.allocationSize,
           .memoryTypeIndex = 0,  // Memory type assigned in the next step
   };
@@ -1042,36 +985,32 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
   mapMemoryTypeToIndex(ahb_props.memoryTypeBits,
                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                        &allocInfo.memoryTypeIndex);
-
+  allocInfo.pNext = &importBufferInfo;
+  importBufferInfo.pNext = &dedicatedAllocateInfo;
   VkDeviceMemory deviceMemory;
-  if (!device.textureDataInitialized_) {
-    createTexture();
-    CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &deviceMemory))
-    CALL_VK(vkBindImageMemory(device.device_, tex_obj.image, deviceMemory, 0))
-    VkImageViewCreateInfo view = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .image = tex_obj.image,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = kTexFmt,
-            .components =
-                    {
-                            VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G,
-                            VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A,
-                    },
-            .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
-    };
-    CALL_VK(vkCreateImageView(device.device_, &view, nullptr, &tex_obj.view))
-    createBuffers();
-    createGraphicsPipeline();
-    createDescriptorSet();
-    putAllTogether();
-    device.textureDataInitialized_ = true;
-  } else {
-    CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &deviceMemory))
-    CALL_VK(vkBindImageMemory(device.device_, tex_obj.image, deviceMemory, 0))
-  }
+  createTexture();
+  dedicatedAllocateInfo.image = tex_obj.image;
+  assert(dedicatedAllocateInfo.image != VK_NULL_HANDLE);
+  CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &deviceMemory))
+  CALL_VK(vkBindImageMemory(device.device_, tex_obj.image, deviceMemory, 0))
+  VkImageViewCreateInfo view = {
+          .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+          .pNext = nullptr,
+          .flags = 0,
+          .image = tex_obj.image,
+          .viewType = VK_IMAGE_VIEW_TYPE_2D,
+          .format = kTexFmt,
+          .components =
+                  {
+                          VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G,
+                          VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A,
+                  },
+          .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
+  };
+  CALL_VK(vkCreateImageView(device.device_, &view, nullptr, &tex_obj.view))
+  createDescriptorSet();
+  putAllTogether();
+  device.textureDataInitialized_ = true;
 }
 
 } // namespace android
