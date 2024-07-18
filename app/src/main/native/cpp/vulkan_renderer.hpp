@@ -38,6 +38,8 @@ protected:
     createFrameBuffers();
     createBuffers();
     createGraphicsPipeline();
+    createDescriptorSet();
+    putAllTogether();
     device.initialized_ = true;
     return true;
   }
@@ -166,8 +168,6 @@ private:
   void createRenderPass();
 
   void createFrameBuffers();
-
-  void createTexture(int width, int height);
 
   void createBuffers();
 

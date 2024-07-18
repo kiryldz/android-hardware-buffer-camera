@@ -541,52 +541,6 @@ VkResult VulkanRenderer::buildShaderFromFile(const char* shaderSource,
   return result;
 }
 
-void VulkanRenderer::createTexture(int width, int height) {
-  LOGI("->createTexture");
-
-  // Check for linear supportability
-  VkFormatProperties props;
-  vkGetPhysicalDeviceFormatProperties(device.gpuDevice_, kTexFmt, &props);
-  assert((props.linearTilingFeatures | props.optimalTilingFeatures) &
-         VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
-
-  if (props.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) {
-    // linear format supporting the required texture
-  } else {
-    throw std::exception();
-  }
-  VkExternalMemoryImageCreateInfo externalMemoryImageCreateInfo = {
-          .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
-          .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
-  };
-  // Allocate the linear texture so texture could be copied over
-  VkImageCreateInfo image_create_info = {
-          .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-          .pNext = &externalMemoryImageCreateInfo,
-          .flags = 0,
-          .imageType = VK_IMAGE_TYPE_2D,
-          .format = kTexFmt,
-          .extent = {
-                  static_cast<uint32_t>(width),
-                  static_cast<uint32_t>(height),
-                  1
-                  },
-          .mipLevels = 1,
-          .arrayLayers = 1,
-          .samples = VK_SAMPLE_COUNT_1_BIT,
-          .tiling = VK_IMAGE_TILING_OPTIMAL,
-          .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-          .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-          .queueFamilyIndexCount = 1,
-          .pQueueFamilyIndices = &device.queueFamilyIndex_,
-          .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-  };
-  CALL_VK(vkCreateImage(device.device_, &image_create_info, nullptr,
-                        &tex_obj.image));
-  tex_obj.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  LOGI("<-createTexture");
-}
-
 void VulkanRenderer::createBuffers() {
   // Vertex positions
   const float vertexData[] = {
@@ -900,26 +854,6 @@ void VulkanRenderer::createDescriptorSet() {
           .pSetLayouts = &gfxPipeline.dscLayout_};
   CALL_VK(vkAllocateDescriptorSets(device.device_, &alloc_info,
                                    &gfxPipeline.descSet_));
-
-  VkDescriptorImageInfo texDst;
-
-  texDst.sampler = tex_obj.sampler;
-  texDst.imageView = tex_obj.view;
-  // changed from VK_IMAGE_LAYOUT_GENERAL to avoid validation complaining
-  texDst.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-  VkWriteDescriptorSet writeDst{
-          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-          .pNext = nullptr,
-          .dstSet = gfxPipeline.descSet_,
-          .dstBinding = 0,
-          .dstArrayElement = 0,
-          .descriptorCount = 1,
-          .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-          .pImageInfo = &texDst,
-          .pBufferInfo = nullptr,
-          .pTexelBufferView = nullptr};
-  vkUpdateDescriptorSets(device.device_, 1, &writeDst, 0, nullptr);
   LOGI("<-createDescriptorSet");
 }
 
@@ -933,7 +867,7 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           .sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID,
           .pNext = &ahb_format_props
   };
-  auto vkGetAndroidHardwareBufferPropertiesANDROID =
+  static auto vkGetAndroidHardwareBufferPropertiesANDROID =
           (PFN_vkGetAndroidHardwareBufferPropertiesANDROID)vkGetInstanceProcAddr(device.instance_, "vkGetAndroidHardwareBufferPropertiesANDROID");
   CALL_VK(vkGetAndroidHardwareBufferPropertiesANDROID(device.device_, buffer, &ahb_props))
 
@@ -950,6 +884,7 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
 
   VkMemoryAllocateInfo allocInfo{
           .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+          .pNext = &importBufferInfo,
           .allocationSize = ahb_props.allocationSize,
           .memoryTypeIndex = 0,  // Memory type assigned in the next step
   };
@@ -958,14 +893,42 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
   mapMemoryTypeToIndex(ahb_props.memoryTypeBits,
                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                        &allocInfo.memoryTypeIndex);
-  allocInfo.pNext = &importBufferInfo;
-  importBufferInfo.pNext = &dedicatedAllocateInfo;
-  VkDeviceMemory deviceMemory;
-  createTexture(1280, 720); // TODO
+  VkExternalMemoryImageCreateInfo externalMemoryImageCreateInfo = {
+          .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
+          .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
+  };
+  // Allocate the linear texture so texture could be copied over
+  VkImageCreateInfo image_create_info = {
+          .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+          .pNext = &externalMemoryImageCreateInfo,
+          .flags = 0,
+          .imageType = VK_IMAGE_TYPE_2D,
+          .format = kTexFmt,
+          .extent = {
+                  static_cast<uint32_t>(1280), // TODO
+                  static_cast<uint32_t>(720), // TODO
+                  1
+          },
+          .mipLevels = 1,
+          .arrayLayers = 1,
+          .samples = VK_SAMPLE_COUNT_1_BIT,
+          .tiling = VK_IMAGE_TILING_OPTIMAL,
+          .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+          .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+          .queueFamilyIndexCount = 1,
+          .pQueueFamilyIndices = &device.queueFamilyIndex_,
+          .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+  };
+  if (tex_obj.mem) {
+    vkDestroyImage(device.device_, tex_obj.image, nullptr);
+    vkFreeMemory(device.device_, tex_obj.mem, nullptr);
+  }
+  CALL_VK(vkCreateImage(device.device_, &image_create_info, nullptr,
+                        &tex_obj.image));
+  CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &tex_obj.mem))
+  CALL_VK(vkBindImageMemory(device.device_, tex_obj.image, tex_obj.mem, 0))
+  tex_obj.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   dedicatedAllocateInfo.image = tex_obj.image;
-  assert(dedicatedAllocateInfo.image != VK_NULL_HANDLE);
-  CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &deviceMemory))
-  CALL_VK(vkBindImageMemory(device.device_, tex_obj.image, deviceMemory, 0))
   VkImageViewCreateInfo view = {
           .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
           .pNext = nullptr,
@@ -981,8 +944,23 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
   };
   CALL_VK(vkCreateImageView(device.device_, &view, nullptr, &tex_obj.view))
-  createDescriptorSet();
-  putAllTogether();
+  VkDescriptorImageInfo texDst = {
+          .sampler = tex_obj.sampler,
+          .imageView = tex_obj.view,
+          .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+  };
+  VkWriteDescriptorSet writeDst{
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .pNext = nullptr,
+          .dstSet = gfxPipeline.descSet_,
+          .dstBinding = 0,
+          .dstArrayElement = 0,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+          .pImageInfo = &texDst,
+          .pBufferInfo = nullptr,
+          .pTexelBufferView = nullptr};
+  vkUpdateDescriptorSets(device.device_, 1, &writeDst, 0, nullptr);
   device.textureDataInitialized_ = true;
 }
 
