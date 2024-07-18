@@ -65,7 +65,6 @@ void BaseRenderer::feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer) {
   // it seems that there's no leak even if we do not explicitly acquire / release but guess better do that
   AHardwareBuffer_acquire(aHardwareBuffer);
   aHwBufferQueue.push(aHardwareBuffer);
-  //  LOGI("Feed new hardware buffer, size %u", aHwBufferQueue.unsafe_size());
   renderThread->scheduleTask([this] {
     bufferQueueMutex.lock();
     if (!aHwBufferQueue.empty()) {

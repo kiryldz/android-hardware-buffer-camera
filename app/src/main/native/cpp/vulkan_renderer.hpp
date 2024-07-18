@@ -167,7 +167,7 @@ private:
 
   void createFrameBuffers();
 
-  void createTexture();
+  void createTexture(int width, int height);
 
   void createBuffers();
 

@@ -46,31 +46,32 @@ void CoreEngine::nativeSetSurface(JNIEnv &env, const jni::Object<Surface> &surfa
 /** called from worker thread **/
 void CoreEngine::nativeFeedHardwareBuffer(JNIEnv &env,
                                           const jni::Object<HardwareBuffer> &buffer) {
-  auto cpuBuffer = AHardwareBuffer_fromHardwareBuffer(&env, jni::Unwrap(*buffer.get()));
-  AHardwareBuffer_Desc cpuDescription;
-  AHardwareBuffer_describe(cpuBuffer, &cpuDescription);
-  AHardwareBuffer_Desc gpuDescription {
-    .width = cpuDescription.width,
-    .height = cpuDescription.height,
-//    .height = 1,
-    .layers = cpuDescription.layers,
-    .format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM,
-    .usage = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE | AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER,
-//    .usage = AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER,
-  };
-  AHardwareBuffer *gpuBuffer = nullptr;
-//  LOGI("Supported: %i", AHardwareBuffer_isSupported(&gpuDescription));
-  int result = AHardwareBuffer_allocate(&gpuDescription, &gpuBuffer);
-  LOGI("Results for allocate: %d", result);
-  void* gpuData = nullptr;
-  void* cpuData = nullptr;
-  auto resCpu = AHardwareBuffer_lock(cpuBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
-  auto resGpu = AHardwareBuffer_lock(gpuBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, -1, nullptr, &gpuData);
-  LOGI("Results for locks: %d and %d", resCpu, resGpu);
-  memcpy(gpuData, cpuData, cpuDescription.height * cpuDescription.width * 4);
-  AHardwareBuffer_unlock(cpuBuffer, nullptr);
-  AHardwareBuffer_unlock(gpuBuffer, nullptr);
-  renderer->feedHardwareBuffer(gpuBuffer);
+  auto cameraBuffer = AHardwareBuffer_fromHardwareBuffer(&env, jni::Unwrap(*buffer.get()));
+  AHardwareBuffer_Desc cameraBufferDescription;
+  AHardwareBuffer_describe(cameraBuffer, &cameraBufferDescription);
+  if (cameraBufferDescription.usage & AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE) {
+    renderer->feedHardwareBuffer(cameraBuffer);
+  } else {
+    AHardwareBuffer_Desc gpuBufferDescription {
+            .width = cameraBufferDescription.width,
+            .height = cameraBufferDescription.height,
+            .layers = cameraBufferDescription.layers,
+            .format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM,
+            .usage = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE | AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER,
+    };
+    AHardwareBuffer *gpuBuffer = nullptr;
+    int result = AHardwareBuffer_allocate(&gpuBufferDescription, &gpuBuffer);
+    LOGI("Results for allocate: %d", result);
+    void* gpuData = nullptr;
+    void* cpuData = nullptr;
+    auto resCpu = AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
+    auto resGpu = AHardwareBuffer_lock(gpuBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, -1, nullptr, &gpuData);
+    LOGI("Results for locks: %d and %d", resCpu, resGpu);
+    memcpy(gpuData, cpuData, cameraBufferDescription.height * cameraBufferDescription.width * 4);
+    AHardwareBuffer_unlock(cameraBuffer, nullptr);
+    AHardwareBuffer_unlock(gpuBuffer, nullptr);
+    renderer->feedHardwareBuffer(gpuBuffer);
+  }
 }
 
 void CoreEngine::nativeDestroy(JNIEnv &env) {

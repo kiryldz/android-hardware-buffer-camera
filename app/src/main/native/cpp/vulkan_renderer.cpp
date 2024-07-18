@@ -541,7 +541,7 @@ VkResult VulkanRenderer::buildShaderFromFile(const char* shaderSource,
   return result;
 }
 
-void VulkanRenderer::createTexture() {
+void VulkanRenderer::createTexture(int width, int height) {
   LOGI("->createTexture");
 
   // Check for linear supportability
@@ -566,7 +566,11 @@ void VulkanRenderer::createTexture() {
           .flags = 0,
           .imageType = VK_IMAGE_TYPE_2D,
           .format = kTexFmt,
-          .extent = {1280,720, 1}, // TODO
+          .extent = {
+                  static_cast<uint32_t>(width),
+                  static_cast<uint32_t>(height),
+                  1
+                  },
           .mipLevels = 1,
           .arrayLayers = 1,
           .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -580,27 +584,6 @@ void VulkanRenderer::createTexture() {
   CALL_VK(vkCreateImage(device.device_, &image_create_info, nullptr,
                         &tex_obj.image));
   tex_obj.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  const VkSamplerCreateInfo sampler = {
-          .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-          .pNext = nullptr,
-          .magFilter = VK_FILTER_NEAREST,
-          .minFilter = VK_FILTER_NEAREST,
-          .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-          .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-          .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-          .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-          .mipLodBias = 0.0f,
-          .maxAnisotropy = 1,
-          .compareOp = VK_COMPARE_OP_NEVER,
-          .minLod = 0.0f,
-          .maxLod = 0.0f,
-          .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
-          .unnormalizedCoordinates = VK_FALSE,
-  };
-  CALL_VK(vkCreateSampler(device.device_, &sampler, nullptr,
-                          &tex_obj.sampler));
-//  auto code = vkCreateImageView(device.device_, &view, nullptr, &tex_obj.view);
-//  LOGI("<-createTexture, %d", code);
   LOGI("<-createTexture");
 }
 
@@ -890,7 +873,6 @@ void VulkanRenderer::renderImpl() {
           .pResults = &result,
   };
   vkQueuePresentKHR(device.queue_, &presentInfo);
-//  vkFreeDescriptorSets()
 }
 
 void VulkanRenderer::createDescriptorSet() {
@@ -951,19 +933,10 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           .sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID,
           .pNext = &ahb_format_props
   };
-  AHardwareBuffer_Desc description;
-  AHardwareBuffer_describe(buffer, &description);
-
-  LOGI("Usage native: %llu", description.usage);
-  LOGI("Format native: %u", description.format);
-  LOGI("Dimensions native: %u, %u", description.width, description.height);
-  LOGI("Image data native: stride=%u, layers=%u", description.stride, description.layers);
-
   auto vkGetAndroidHardwareBufferPropertiesANDROID =
           (PFN_vkGetAndroidHardwareBufferPropertiesANDROID)vkGetInstanceProcAddr(device.instance_, "vkGetAndroidHardwareBufferPropertiesANDROID");
   CALL_VK(vkGetAndroidHardwareBufferPropertiesANDROID(device.device_, buffer, &ahb_props))
 
-  // Import the AHardwareBuffer as Vulkan memory
   VkImportAndroidHardwareBufferInfoANDROID importBufferInfo = {
           .sType = VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID,
           .buffer = buffer,
@@ -988,7 +961,7 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
   allocInfo.pNext = &importBufferInfo;
   importBufferInfo.pNext = &dedicatedAllocateInfo;
   VkDeviceMemory deviceMemory;
-  createTexture();
+  createTexture(1280, 720); // TODO
   dedicatedAllocateInfo.image = tex_obj.image;
   assert(dedicatedAllocateInfo.image != VK_NULL_HANDLE);
   CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &deviceMemory))
