@@ -686,6 +686,27 @@ void VulkanRenderer::setImageLayout(VkCommandBuffer cmdBuffer, VkImage image,
 
 void VulkanRenderer::putAllTogether() {
   LOGI("->putAllTogether");
+  // Create sampler
+  const VkSamplerCreateInfo sampler = {
+          .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+          .pNext = nullptr,
+          .magFilter = VK_FILTER_NEAREST,
+          .minFilter = VK_FILTER_NEAREST,
+          .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+          .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+          .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+          .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+          .mipLodBias = 0.0f,
+          .maxAnisotropy = 1,
+          .compareOp = VK_COMPARE_OP_NEVER,
+          .minLod = 0.0f,
+          .maxLod = 0.0f,
+          .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+          .unnormalizedCoordinates = VK_FALSE,
+  };
+  CALL_VK(vkCreateSampler(device.device_, &sampler, nullptr,
+                          &tex_obj.sampler));
+
   // Create a pool of command buffers to allocate command buffer from
   VkCommandPoolCreateInfo cmdPoolCreateInfo{
           .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -871,15 +892,16 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           (PFN_vkGetAndroidHardwareBufferPropertiesANDROID)vkGetInstanceProcAddr(device.instance_, "vkGetAndroidHardwareBufferPropertiesANDROID");
   CALL_VK(vkGetAndroidHardwareBufferPropertiesANDROID(device.device_, buffer, &ahb_props))
 
-  VkImportAndroidHardwareBufferInfoANDROID importBufferInfo = {
-          .sType = VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID,
-          .buffer = buffer,
-  };
-
   VkMemoryDedicatedAllocateInfo dedicatedAllocateInfo = {
           .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
-          .image = tex_obj.image,
+          .image = VK_NULL_HANDLE, // will be set later
           .buffer = VK_NULL_HANDLE,
+  };
+
+  VkImportAndroidHardwareBufferInfoANDROID importBufferInfo = {
+          .sType = VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID,
+          .pNext = &dedicatedAllocateInfo,
+          .buffer = buffer,
   };
 
   VkMemoryAllocateInfo allocInfo{
@@ -924,11 +946,11 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
     vkFreeMemory(device.device_, tex_obj.mem, nullptr);
   }
   CALL_VK(vkCreateImage(device.device_, &image_create_info, nullptr,
-                        &tex_obj.image));
-  CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &tex_obj.mem))
-  CALL_VK(vkBindImageMemory(device.device_, tex_obj.image, tex_obj.mem, 0))
+                        &tex_obj.image))
   tex_obj.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   dedicatedAllocateInfo.image = tex_obj.image;
+  CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &tex_obj.mem))
+  CALL_VK(vkBindImageMemory(device.device_, tex_obj.image, tex_obj.mem, 0))
   VkImageViewCreateInfo view = {
           .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
           .pNext = nullptr,
