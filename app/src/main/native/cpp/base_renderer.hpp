@@ -5,7 +5,9 @@
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 
-#include <queue>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "looper_thread.hpp"
 #include "util.hpp"
@@ -56,8 +58,8 @@ protected:
 
     int viewportWidth = -1;
     int viewportHeight = -1;
-    volatile bool hardwareBufferDescribed = false;
     float bufferImageRatio = 1.0f;
+    glm::mat4 mvp;
 
     /**
      * The mutex needed as worker camera thread produces buffers while render thread consumes them.
@@ -65,6 +67,12 @@ protected:
     std::mutex bufferMutex;
 
 private:
+
+    /**
+     * Must be called from render thread only to avoid race conditions.
+     */
+    void updateMvp();
+
     std::unique_ptr <LooperThread> renderThread;
     std::mutex mutex;
     std::condition_variable initCondition;

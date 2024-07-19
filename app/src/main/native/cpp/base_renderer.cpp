@@ -31,12 +31,16 @@ void BaseRenderer::setWindow(ANativeWindow *window) {
 }
 
 void BaseRenderer::updateWindowSize(int width, int height) {
-  // schedule an event to the render thread
   renderThread->scheduleTask([this, width, height] {
-    viewportWidth = width;
-    viewportHeight = height;
-    LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
-    onWindowSizeUpdated(width, height);
+    // calculate MVP on CPU, if we would know it will be updated more often -
+    // of course better move matrix calculation to GPU
+    if (viewportWidth != width || viewportHeight != height) {
+      updateMvp();
+      viewportWidth = width;
+      viewportHeight = height;
+      LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
+      onWindowSizeUpdated(width, height);
+    }
   });
 }
 
@@ -56,15 +60,17 @@ void BaseRenderer::resetWindow() {
 }
 
 void BaseRenderer::feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer) {
-  if (!hardwareBufferDescribed) {
+  AHardwareBuffer_acquire(aHardwareBuffer);
+  LOGI("Buffer %p acquired" , aHardwareBuffer);
+  renderThread->scheduleTask([aHardwareBuffer, this] {
     AHardwareBuffer_Desc description;
     AHardwareBuffer_describe(aHardwareBuffer, &description);
-    bufferImageRatio =
+    const auto bufferImageRatio_ =
             static_cast<float>(description.width) / static_cast<float>(description.height);
-  }
-  AHardwareBuffer_acquire(aHardwareBuffer);
-  LOGI("Buffer %p acquired; id = " , aHardwareBuffer);
-  renderThread->scheduleTask([aHardwareBuffer, this] {
+    if (bufferImageRatio_ != bufferImageRatio) {
+      bufferImageRatio = bufferImageRatio_;
+      updateMvp();
+    }
     bufferMutex.lock();
     // transform HW buffer to Vulkan / OpenGL image / external texture.
     hwBufferToTexture(aHardwareBuffer);
@@ -74,6 +80,19 @@ void BaseRenderer::feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer) {
     // post choreographer callback as we will need to render this texture
     postChoreographerCallback();
   });
+}
+
+void BaseRenderer::updateMvp() {
+  float viewportRatio =
+          static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
+  float ratio = viewportRatio * bufferImageRatio;
+  auto proj = glm::frustum(-ratio, ratio, -1.f, 1.f, 3.f, 7.f);
+  auto view = glm::lookAt(
+          glm::vec3(0.f, 0.f, 3.f),
+          glm::vec3(0.f, 0.f, 0.f),
+          glm::vec3(1.f, 0.f, 0.f)
+  );
+  mvp = proj * view;
 }
 
 } // namespace android

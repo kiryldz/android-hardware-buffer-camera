@@ -6,10 +6,6 @@
 // needed for glEGLImageTargetTexture2DOES
 #include <GLES2/gl2ext.h>
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
 #include "base_renderer.hpp"
 
 namespace engine {

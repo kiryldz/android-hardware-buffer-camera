@@ -273,17 +273,6 @@ void OpenGLRenderer::renderImpl() {
           (void *) (2 * sizeof(float))
   );
   glEnableVertexAttribArray(1);
-  // calculate MVP matrix only once
-  static const float viewportRatio =
-          static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
-  static const float ratio = viewportRatio * bufferImageRatio;
-  static auto proj = glm::frustum(-ratio, ratio, -1.f, 1.f, 3.f, 7.f);
-  static auto view = glm::lookAt(
-          glm::vec3(0.f, 0.f, 3.f),
-          glm::vec3(0.f, 0.f, 0.f),
-          glm::vec3(1.f, 0.f, 0.f)
-  );
-  static auto mvp = proj * view;
   glUniformMatrix4fv(uniformMvp, 1, GL_FALSE, glm::value_ptr(mvp));
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraExternalTex);
