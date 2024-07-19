@@ -543,57 +543,39 @@ VkResult VulkanRenderer::buildShaderFromFile(const char* shaderSource,
   return result;
 }
 
-void VulkanRenderer::createBuffers() {
-  // Vertex positions
-  const float vertexData[] = {
-          -1.0f, -1.0f, 0.0f,0.0f,
-          1.0f, -1.0f, 1.0f,  0.0f,
-          -1.0f, 1.0f,0.0f, 1.0f,
-          1.0f, 1.0f, 1.0f, 1.0f,
-  };
-
-  // Create a vertex buffer
+void VulkanRenderer::createBuffer(
+        VkDeviceSize size,
+        VkBufferUsageFlags usage,
+        VkMemoryPropertyFlags properties,
+        VkBuffer& buffer,
+        VkDeviceMemory& bufferMemory
+        ) {
   VkBufferCreateInfo createBufferInfo{
           .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
           .pNext = nullptr,
           .flags = 0,
-          .size = sizeof(vertexData),
-          .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+          .size = size,
+          .usage = usage,
           .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
           .queueFamilyIndexCount = 1,
           .pQueueFamilyIndices = &device.queueFamilyIndex_,
   };
-
   CALL_VK(vkCreateBuffer(device.device_, &createBufferInfo, nullptr,
-                         &buffers.vertexBuf_));
-
+                         &buffer));
   VkMemoryRequirements memReq;
-  vkGetBufferMemoryRequirements(device.device_, buffers.vertexBuf_, &memReq);
-
+  vkGetBufferMemoryRequirements(device.device_, buffer, &memReq);
   VkMemoryAllocateInfo allocInfo{
           .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
           .pNext = nullptr,
           .allocationSize = memReq.size,
           .memoryTypeIndex = 0,  // Memory type assigned in the next step
   };
-
   // Assign the proper memory type for that buffer
   mapMemoryTypeToIndex(memReq.memoryTypeBits,
-                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                       VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                       properties,
                        &allocInfo.memoryTypeIndex);
-
-  // Allocate memory for the buffer
-  VkDeviceMemory deviceMemory;
-  CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &deviceMemory));
-
-  void* data;
-  CALL_VK(vkMapMemory(device.device_, deviceMemory, 0, allocInfo.allocationSize,
-                      0, &data));
-  memcpy(data, vertexData, sizeof(vertexData));
-  vkUnmapMemory(device.device_, deviceMemory);
-
-  CALL_VK(vkBindBufferMemory(device.device_, buffers.vertexBuf_, deviceMemory, 0));
+  CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &bufferMemory));
+  CALL_VK(vkBindBufferMemory(device.device_, buffers.vertexBuf_, bufferMemory, 0));
 }
 
 void VulkanRenderer::mapMemoryTypeToIndex(uint32_t typeBits,
@@ -791,7 +773,7 @@ void VulkanRenderer::renderImpl() {
   vkQueuePresentKHR(device.queue_, &presentInfo);
 }
 
-void VulkanRenderer::createDescriptorSet() {
+void VulkanRenderer::createCombinedImageSamplerDescriptorSet() {
   LOGI("->createDescriptorSet");
   const VkDescriptorPoolSize type_count = {
           .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -984,6 +966,50 @@ void VulkanRenderer::recordCommandBuffer() {
 
 void VulkanRenderer::onMvpUpdated() {
 
+}
+
+void VulkanRenderer::createUniformBufferDescriptorSet() {
+  VkDescriptorSetLayoutBinding uboLayoutBinding = {
+          .binding = 0,
+          .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+          .descriptorCount = 1,
+          .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+          .pImmutableSamplers = nullptr,
+  };
+  VkDescriptorSetLayout descriptorSetLayout;
+  VkDescriptorSetLayoutCreateInfo layoutInfo = {
+          .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+          .bindingCount = 1,
+          .pBindings = &uboLayoutBinding,
+  };
+  CALL_VK(vkCreateDescriptorSetLayout(device.device_, &layoutInfo, nullptr, &descriptorSetLayout))
+
+  // TODO
+}
+
+void VulkanRenderer::createVertexBuffer() {
+  // Vertex positions
+  const float vertexData[] = {
+          -1.0f, -1.0f, 0.0f,0.0f,
+          1.0f, -1.0f, 1.0f,  0.0f,
+          -1.0f, 1.0f,0.0f, 1.0f,
+          1.0f, 1.0f, 1.0f, 1.0f,
+  };
+  // Allocate memory for the buffer
+  VkDeviceMemory vertexBufferMemory;
+  createBuffer(
+          sizeof(vertexData),
+          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+          buffers.vertexBuf_,
+          vertexBufferMemory
+  );
+
+  void* data;
+  CALL_VK(vkMapMemory(device.device_, vertexBufferMemory, 0, sizeof(vertexData),
+                      0, &data))
+  memcpy(data, vertexData, sizeof(vertexData));
+  vkUnmapMemory(device.device_, vertexBufferMemory);
 }
 
 } // namespace android

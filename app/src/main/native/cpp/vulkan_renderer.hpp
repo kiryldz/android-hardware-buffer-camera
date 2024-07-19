@@ -36,16 +36,17 @@ protected:
     createSwapChain();
     createRenderPass();
     createFrameBuffers();
-    createBuffers();
+    createVertexBuffer();
     createGraphicsPipeline();
-    createDescriptorSet();
+    createCombinedImageSamplerDescriptorSet();
+//    createUniformBufferDescriptorSet();
     createOtherStaff();
     device.initialized_ = true;
     return true;
   }
 
   void onWindowSizeUpdated(int width, int height) override {
-    // TODO
+    // TODO recreate what's needed in case of resize
   }
 
   void onWindowDestroyed() override {
@@ -75,11 +76,15 @@ private:
   const char *vertexShaderSource = "#version 400\n"
                                    "#extension GL_ARB_separate_shader_objects : enable\n"
                                    "#extension GL_ARB_shading_language_420pack : enable\n"
+//                                   "layout (binding = 0) uniform UniformBufferObject {\n"
+//                                   "    mat4 mvp;\n"
+//                                   "} ubo;\n"
                                    "layout (location = 0) in vec4 pos;\n"
                                    "layout (location = 1) in vec2 attr;\n"
                                    "layout (location = 0) out vec2 texcoord;\n"
                                    "void main() {\n"
                                    "   texcoord = attr;\n"
+//                                   "   gl_Position = ubo.mvp * pos;\n"
                                    "   gl_Position = pos;\n"
                                    "}";
 
@@ -94,6 +99,10 @@ private:
                                       "}";
 
   ///////// Structs and variables
+
+  struct UniformBufferObject {
+    glm::mat4 mvp;
+  };
 
   struct VulkanDeviceInfo {
     bool initialized_;
@@ -127,11 +136,8 @@ private:
   typedef struct texture_object {
     VkSampler sampler;
     VkImage image;
-//    VkImageLayout imageLayout;
     VkDeviceMemory mem;
     VkImageView view;
-    int32_t tex_width;
-    int32_t tex_height;
   } texture_object;
   static const VkFormat kTexFmt = VK_FORMAT_R8G8B8A8_UNORM;
   struct texture_object tex_obj;
@@ -150,6 +156,13 @@ private:
     VkPipeline pipeline_;
   };
   VulkanGfxPipelineInfo gfxPipeline;
+
+  struct VulkanUniformBuffersInfo {
+    VkBuffer* uniformBuffers;
+    VkDeviceMemory* uniformBuffersMemory;
+    void* uniformBuffersMapped;
+  };
+  VulkanUniformBuffersInfo uboInfo;
 
   struct VulkanRenderInfo {
     VkRenderPass renderPass_;
@@ -171,11 +184,13 @@ private:
 
   void createFrameBuffers();
 
-  void createBuffers();
+  void createVertexBuffer();
 
   void createGraphicsPipeline();
 
-  void createDescriptorSet();
+  void createCombinedImageSamplerDescriptorSet();
+
+  void createUniformBufferDescriptorSet();
 
   void createOtherStaff();
 
@@ -184,6 +199,12 @@ private:
   ////// Helper functions
 
   void mapMemoryTypeToIndex(uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex);
+
+  void createBuffer(VkDeviceSize size,
+                    VkBufferUsageFlags usage,
+                    VkMemoryPropertyFlags properties,
+                    VkBuffer& buffer,
+                    VkDeviceMemory& bufferMemory);
 
   void setImageLayout(VkCommandBuffer cmdBuffer, VkImage image,
                       VkImageLayout oldImageLayout, VkImageLayout newImageLayout,
