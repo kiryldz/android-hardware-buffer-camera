@@ -54,6 +54,8 @@ protected:
 
   void hwBufferToTexture(AHardwareBuffer *buffer) override;
 
+  void onMvpUpdated() override;
+
   bool couldRender() const override {
     return device.initialized_ && device.textureDataInitialized_;
   }

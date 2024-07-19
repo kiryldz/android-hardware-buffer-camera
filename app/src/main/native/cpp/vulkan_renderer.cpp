@@ -982,5 +982,9 @@ void VulkanRenderer::recordCommandBuffer() {
   }
 }
 
+void VulkanRenderer::onMvpUpdated() {
+
+}
+
 } // namespace android
 } // namespace engine

@@ -45,6 +45,8 @@ protected:
 
     virtual void hwBufferToTexture(AHardwareBuffer *buffer) = 0;
 
+    virtual void onMvpUpdated() { };
+
     virtual bool couldRender() const = 0;
 
     virtual void render() = 0;
@@ -58,7 +60,6 @@ protected:
 
     int viewportWidth = -1;
     int viewportHeight = -1;
-    float bufferImageRatio = 1.0f;
     glm::mat4 mvp;
 
     /**
@@ -72,6 +73,8 @@ private:
      * Must be called from render thread only to avoid race conditions.
      */
     void updateMvp();
+
+    float bufferImageRatio = 1.0f;
 
     std::unique_ptr <LooperThread> renderThread;
     std::mutex mutex;

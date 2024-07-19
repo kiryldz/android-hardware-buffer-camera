@@ -93,6 +93,7 @@ void BaseRenderer::updateMvp() {
           glm::vec3(1.f, 0.f, 0.f)
   );
   mvp = proj * view;
+  onMvpUpdated();
 }
 
 } // namespace android
