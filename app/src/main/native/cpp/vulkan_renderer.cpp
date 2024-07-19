@@ -834,7 +834,6 @@ void VulkanRenderer::createDescriptorSet() {
 }
 
 void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
-  // Get the AHardwareBuffer properties
   VkAndroidHardwareBufferFormatPropertiesANDROID ahb_format_props = {
           .sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID,
           .pNext = nullptr,
@@ -874,7 +873,8 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
           .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
   };
-  // Allocate the linear texture so texture could be copied over
+  AHardwareBuffer_Desc hardwareBufferDesc;
+  AHardwareBuffer_describe(buffer, &hardwareBufferDesc);
   VkImageCreateInfo image_create_info = {
           .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
           .pNext = &externalMemoryImageCreateInfo,
@@ -882,8 +882,8 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           .imageType = VK_IMAGE_TYPE_2D,
           .format = kTexFmt,
           .extent = {
-                  static_cast<uint32_t>(1280), // TODO
-                  static_cast<uint32_t>(720), // TODO
+                  static_cast<uint32_t>(hardwareBufferDesc.width),
+                  static_cast<uint32_t>(hardwareBufferDesc.height),
                   1
           },
           .mipLevels = 1,
@@ -1016,7 +1016,9 @@ void VulkanRenderer::recordCommandBuffer() {
 
 void VulkanRenderer::onMvpUpdated() {
   UniformBufferObject ubo{};
-  ubo.mvp = mvp;
+  // TODO something is wrong with the matrix
+//  ubo.mvp = mvp;
+  ubo.mvp = glm::mat4 (1.f);
   memcpy(uboInfo.uniformBufferMapped, &ubo, sizeof(ubo));
   LOGI("MVP: %s", glm::to_string(ubo.mvp).c_str());
 }
