@@ -61,6 +61,8 @@ public:
 private:
   ANativeWindow *aNativeWindow;
   std::unique_ptr <BaseRenderer> renderer;
+
+  AHardwareBuffer * gpuBuffer;
 };
 
 } // namespace android

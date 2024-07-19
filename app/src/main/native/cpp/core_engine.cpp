@@ -59,9 +59,7 @@ void CoreEngine::nativeFeedHardwareBuffer(JNIEnv &env,
             .format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM,
             .usage = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE | AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER,
     };
-    AHardwareBuffer *gpuBuffer = nullptr;
-    int result = AHardwareBuffer_allocate(&gpuBufferDescription, &gpuBuffer);
-    LOGI("Results for allocate: %d", result);
+    static int result = AHardwareBuffer_allocate(&gpuBufferDescription, &gpuBuffer);
     void* gpuData = nullptr;
     void* cpuData = nullptr;
     auto resCpu = AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);

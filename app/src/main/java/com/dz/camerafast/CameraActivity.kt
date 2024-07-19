@@ -35,7 +35,7 @@ class CameraActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         coreEngine = CoreEngine(
             surfaceHolder = findViewById<SurfaceView>(R.id.surface_view).holder,
-            renderingMode = RenderingMode.VULKAN,
+            renderingMode = RenderingMode.OPEN_GL_ES,
         )
     }
 
@@ -101,12 +101,16 @@ class CameraActivity : AppCompatActivity() {
                 imageProxy.image?.hardwareBuffer?.let { buffer ->
                     buffer.printSupportedUsageFlags()
                     coreEngine.feedHardwareBuffer(buffer)
+                    // from docs for `buffer.close()`:
+                    // Calling this method frees up any underlying native resources.
+                    //
+                    // This does not seem to be true as we acquire buffer in C++ and
+                    // release it on a render thread.
                     buffer.close()
-                    Log.i(TAG, "Buffer fed and closed in Java!")
+                    Log.i(TAG, "Buffer closed!")
                 }
                 imageProxy.close()
                 Log.i(TAG, "Image closed!")
-//                imageAnalysis.clearAnalyzer()
             }
 
             // Create a new camera selector each time, enforcing lens facing

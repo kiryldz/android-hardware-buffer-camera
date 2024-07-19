@@ -60,10 +60,9 @@ protected:
     float bufferImageRatio = 1.0f;
 
     /**
-     * Queue with a mutex needed as worker camera thread produces buffers while render thread consumes them.
+     * The mutex needed as worker camera thread produces buffers while render thread consumes them.
      */
-    std::queue<AHardwareBuffer *> aHwBufferQueue;
-    std::mutex bufferQueueMutex;
+    std::mutex bufferMutex;
 
 private:
     std::unique_ptr <LooperThread> renderThread;

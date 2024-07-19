@@ -35,9 +35,7 @@ protected:
         destroyEgl();
     }
 
-    void hwBufferToTexture(AHardwareBuffer *buffer) override {
-        hwBufferToExternalTexture(buffer);
-    }
+    void hwBufferToTexture(AHardwareBuffer *buffer) override;
 
     bool couldRender() const override {
         return eglPrepared && viewportHeight > 0 && viewportHeight > 0;
@@ -112,12 +110,6 @@ private:
     void destroyEgl();
 
     void renderImpl();
-
-    /**
-     * Always called from render thread - converting hardware buffer to an OpenGL external texture.
-     * @param aHardwareBuffer
-     */
-    void hwBufferToExternalTexture(AHardwareBuffer *aHardwareBuffer);
 
     ///////// Callbacks for AChoreographer and ALooper stored as private static functions
 

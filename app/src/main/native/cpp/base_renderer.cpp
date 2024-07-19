@@ -62,18 +62,17 @@ void BaseRenderer::feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer) {
     bufferImageRatio =
             static_cast<float>(description.width) / static_cast<float>(description.height);
   }
-  // it seems that there's no leak even if we do not explicitly acquire / release but guess better do that
   AHardwareBuffer_acquire(aHardwareBuffer);
-  aHwBufferQueue.push(aHardwareBuffer);
-  renderThread->scheduleTask([this] {
-    bufferQueueMutex.lock();
-    if (!aHwBufferQueue.empty()) {
-      hwBufferToTexture(aHwBufferQueue.front());
-      aHwBufferQueue.pop();
-      // post choreographer callback as we will need to render this texture
-      postChoreographerCallback();
-    }
-    bufferQueueMutex.unlock();
+  LOGI("Buffer %p acquired; id = " , aHardwareBuffer);
+  renderThread->scheduleTask([aHardwareBuffer, this] {
+    bufferMutex.lock();
+    // transform HW buffer to Vulkan / OpenGL image / external texture.
+    hwBufferToTexture(aHardwareBuffer);
+    AHardwareBuffer_release(aHardwareBuffer);
+    LOGI("Buffer %p released" , aHardwareBuffer);
+    bufferMutex.unlock();
+    // post choreographer callback as we will need to render this texture
+    postChoreographerCallback();
   });
 }
 
