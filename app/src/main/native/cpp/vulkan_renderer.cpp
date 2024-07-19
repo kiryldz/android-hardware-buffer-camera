@@ -215,6 +215,7 @@ void VulkanRenderer::createSwapChain() {
 }
 
 void VulkanRenderer::createFrameBuffers() {
+  LOGI("->createFrameBuffers");
   // query display attachment to swapchain
   uint32_t swapchainImagesCount = 0;
   CALL_VK(vkGetSwapchainImagesKHR(device.device_, swapchain.swapchain_,
@@ -270,11 +271,12 @@ void VulkanRenderer::createFrameBuffers() {
             .height = static_cast<uint32_t>(swapchain.displaySize_.height),
             .layers = 1,
     };
-    fbCreateInfo.attachmentCount = 1;
 
+    LOGI("Creating framebuffer №%d w=%d, h=%d", i, swapchain.displaySize_.width, swapchain.displaySize_.height);
     CALL_VK(vkCreateFramebuffer(device.device_, &fbCreateInfo, nullptr,
-                                &swapchain.framebuffers_[i]));
+                                &swapchain.framebuffers_[i]))
   }
+  LOGI("-<createFrameBuffers");
 }
 
 void VulkanRenderer::createGraphicsPipeline() {
@@ -684,7 +686,7 @@ void VulkanRenderer::setImageLayout(VkCommandBuffer cmdBuffer, VkImage image,
                        &imageMemoryBarrier);
 }
 
-void VulkanRenderer::putAllTogether() {
+void VulkanRenderer::createOtherStaff() {
   LOGI("->putAllTogether");
   // Create sampler
   const VkSamplerCreateInfo sampler = {
@@ -731,67 +733,6 @@ void VulkanRenderer::putAllTogether() {
   };
   CALL_VK(vkAllocateCommandBuffers(device.device_, &cmdBufferCreateInfo,
                                    renderInfo.cmdBuffer_));
-
-  for (int bufferIndex = 0; bufferIndex < swapchain.swapchainLength_; bufferIndex++) {
-    // We start by creating and declare the "beginning" our command buffer
-    VkCommandBufferBeginInfo cmdBufferBeginInfo{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .pInheritanceInfo = nullptr,
-    };
-    CALL_VK(vkBeginCommandBuffer(renderInfo.cmdBuffer_[bufferIndex],
-                                 &cmdBufferBeginInfo));
-
-    // transition the buffer into color attachment
-//    setImageLayout(renderInfo.cmdBuffer_[bufferIndex],
-//                   swapchain.displayImages_[bufferIndex],
-//                   VK_IMAGE_LAYOUT_UNDEFINED,
-//                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-//                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-//                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-
-    // Now we start a renderpass. Any draw command has to be recorded in a
-    // renderpass
-    VkClearValue clearVals{
-            .color { .float32 { 0.0f, 0.34f, 0.90f, 1.0f,}},
-    };
-
-    VkRenderPassBeginInfo renderPassBeginInfo{
-            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .pNext = nullptr,
-            .renderPass = renderInfo.renderPass_,
-            .framebuffer = swapchain.framebuffers_[bufferIndex],
-            .renderArea = {.offset =
-                    {
-                            .x = 0, .y = 0,
-                    },
-                    .extent = swapchain.displaySize_},
-            .clearValueCount = 1,
-            .pClearValues = &clearVals};
-    vkCmdBeginRenderPass(renderInfo.cmdBuffer_[bufferIndex], &renderPassBeginInfo,
-                         VK_SUBPASS_CONTENTS_INLINE);
-    // Bind what is necessary to the command buffer
-    vkCmdBindPipeline(renderInfo.cmdBuffer_[bufferIndex],
-                      VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_);
-    vkCmdBindDescriptorSets(
-            renderInfo.cmdBuffer_[bufferIndex], VK_PIPELINE_BIND_POINT_GRAPHICS,
-            gfxPipeline.layout_, 0, 1, &gfxPipeline.descSet_, 0, nullptr);
-    VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(renderInfo.cmdBuffer_[bufferIndex], 0, 1,
-                           &buffers.vertexBuf_, &offset);
-
-    vkCmdDraw(renderInfo.cmdBuffer_[bufferIndex], 4, 1, 0, 0);
-    vkCmdEndRenderPass(renderInfo.cmdBuffer_[bufferIndex]);
-//    setImageLayout(renderInfo.cmdBuffer_[bufferIndex],
-//                   swapchain.displayImages_[bufferIndex],
-//                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-//                   VK_IMAGE_LAYOUT_UNDEFINED,
-//                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-//                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-    CALL_VK(vkEndCommandBuffer(renderInfo.cmdBuffer_[bufferIndex]));
-  }
-
   // We need to create a fence to be able, in the main loop, to wait for our
   // draw command(s) to finish before swapping the framebuffers
   VkFenceCreateInfo fenceCreateInfo{
@@ -939,6 +880,7 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
           .queueFamilyIndexCount = 1,
           .pQueueFamilyIndices = &device.queueFamilyIndex_,
+          // VK_IMAGE_LAYOUT_UNDEFINED is mandatory when using external memory
           .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
   };
   if (tex_obj.mem) {
@@ -947,7 +889,6 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
   }
   CALL_VK(vkCreateImage(device.device_, &image_create_info, nullptr,
                         &tex_obj.image))
-  tex_obj.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   dedicatedAllocateInfo.image = tex_obj.image;
   CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &tex_obj.mem))
   CALL_VK(vkBindImageMemory(device.device_, tex_obj.image, tex_obj.mem, 0))
@@ -983,7 +924,62 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           .pBufferInfo = nullptr,
           .pTexelBufferView = nullptr};
   vkUpdateDescriptorSets(device.device_, 1, &writeDst, 0, nullptr);
+  recordCommandBuffer();
   device.textureDataInitialized_ = true;
+}
+
+void VulkanRenderer::recordCommandBuffer() {
+  for (int bufferIndex = 0; bufferIndex < swapchain.swapchainLength_; bufferIndex++) {
+    // We start by creating and declare the "beginning" our command buffer
+    VkCommandBufferBeginInfo cmdBufferBeginInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .pInheritanceInfo = nullptr,
+    };
+    CALL_VK(vkBeginCommandBuffer(renderInfo.cmdBuffer_[bufferIndex],
+                                 &cmdBufferBeginInfo));
+
+    setImageLayout(renderInfo.cmdBuffer_[bufferIndex],
+                   tex_obj.image,
+                   VK_IMAGE_LAYOUT_UNDEFINED,
+                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                   VK_PIPELINE_STAGE_HOST_BIT,
+                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    // Now we start a renderpass. Any draw command has to be recorded in a
+    // renderpass
+    VkClearValue clearVals{
+            .color { .float32 { 0.0f, 0.34f, 0.90f, 1.0f,}},
+    };
+
+    VkRenderPassBeginInfo renderPassBeginInfo{
+            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .pNext = nullptr,
+            .renderPass = renderInfo.renderPass_,
+            .framebuffer = swapchain.framebuffers_[bufferIndex],
+            .renderArea = {.offset =
+                    {
+                            .x = 0, .y = 0,
+                    },
+                    .extent = swapchain.displaySize_},
+            .clearValueCount = 1,
+            .pClearValues = &clearVals};
+    vkCmdBeginRenderPass(renderInfo.cmdBuffer_[bufferIndex], &renderPassBeginInfo,
+                         VK_SUBPASS_CONTENTS_INLINE);
+    // Bind what is necessary to the command buffer
+    vkCmdBindPipeline(renderInfo.cmdBuffer_[bufferIndex],
+                      VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_);
+    vkCmdBindDescriptorSets(
+            renderInfo.cmdBuffer_[bufferIndex], VK_PIPELINE_BIND_POINT_GRAPHICS,
+            gfxPipeline.layout_, 0, 1, &gfxPipeline.descSet_, 0, nullptr);
+    VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(renderInfo.cmdBuffer_[bufferIndex], 0, 1,
+                           &buffers.vertexBuf_, &offset);
+
+    vkCmdDraw(renderInfo.cmdBuffer_[bufferIndex], 4, 1, 0, 0);
+    vkCmdEndRenderPass(renderInfo.cmdBuffer_[bufferIndex]);
+    CALL_VK(vkEndCommandBuffer(renderInfo.cmdBuffer_[bufferIndex]));
+  }
 }
 
 } // namespace android

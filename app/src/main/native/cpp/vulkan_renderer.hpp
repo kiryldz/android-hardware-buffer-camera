@@ -39,7 +39,7 @@ protected:
     createBuffers();
     createGraphicsPipeline();
     createDescriptorSet();
-    putAllTogether();
+    createOtherStaff();
     device.initialized_ = true;
     return true;
   }
@@ -125,7 +125,7 @@ private:
   typedef struct texture_object {
     VkSampler sampler;
     VkImage image;
-    VkImageLayout imageLayout;
+//    VkImageLayout imageLayout;
     VkDeviceMemory mem;
     VkImageView view;
     int32_t tex_width;
@@ -175,7 +175,9 @@ private:
 
   void createDescriptorSet();
 
-  void putAllTogether();
+  void createOtherStaff();
+
+  void recordCommandBuffer();
 
   ////// Helper functions
 
