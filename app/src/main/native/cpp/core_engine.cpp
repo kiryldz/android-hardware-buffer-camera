@@ -62,9 +62,8 @@ void CoreEngine::nativeFeedHardwareBuffer(JNIEnv &env,
     static int result = AHardwareBuffer_allocate(&gpuBufferDescription, &gpuBuffer);
     void* gpuData = nullptr;
     void* cpuData = nullptr;
-    auto resCpu = AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
-    auto resGpu = AHardwareBuffer_lock(gpuBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, -1, nullptr, &gpuData);
-    LOGI("Results for locks: %d and %d", resCpu, resGpu);
+    AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
+    AHardwareBuffer_lock(gpuBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, -1, nullptr, &gpuData);
     memcpy(gpuData, cpuData, cameraBufferDescription.height * cameraBufferDescription.width * 4);
     AHardwareBuffer_unlock(cameraBuffer, nullptr);
     AHardwareBuffer_unlock(gpuBuffer, nullptr);

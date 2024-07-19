@@ -37,9 +37,9 @@ protected:
     createRenderPass();
     createFrameBuffers();
     createVertexBuffer();
+    createUniformBuffer();
     createGraphicsPipeline();
-    createCombinedImageSamplerDescriptorSet();
-//    createUniformBufferDescriptorSet();
+    createDescriptorSet();
     createOtherStaff();
     device.initialized_ = true;
     return true;
@@ -58,7 +58,7 @@ protected:
   void onMvpUpdated() override;
 
   bool couldRender() const override {
-    return device.initialized_ && device.textureDataInitialized_;
+    return device.initialized_ && device.cameraInitialized_;
   }
 
   void render() override {
@@ -73,25 +73,24 @@ protected:
 
 private:
   ///////// Shaders
-  const char *vertexShaderSource = "#version 400\n"
+  const char *vertexShaderSource = "#version 450\n"
                                    "#extension GL_ARB_separate_shader_objects : enable\n"
                                    "#extension GL_ARB_shading_language_420pack : enable\n"
-//                                   "layout (binding = 0) uniform UniformBufferObject {\n"
-//                                   "    mat4 mvp;\n"
-//                                   "} ubo;\n"
+                                   "layout (binding = 0) uniform UniformBufferObject {\n"
+                                   "    mat4 mvp;\n"
+                                   "} ubo;\n"
                                    "layout (location = 0) in vec4 pos;\n"
                                    "layout (location = 1) in vec2 attr;\n"
                                    "layout (location = 0) out vec2 texcoord;\n"
                                    "void main() {\n"
                                    "   texcoord = attr;\n"
-//                                   "   gl_Position = ubo.mvp * pos;\n"
-                                   "   gl_Position = pos;\n"
+                                   "   gl_Position = ubo.mvp * pos;\n"
                                    "}";
 
-  const char  *fragmentShaderSource = "#version 400\n"
+  const char  *fragmentShaderSource = "#version 450\n"
                                       "#extension GL_ARB_separate_shader_objects : enable\n"
                                       "#extension GL_ARB_shading_language_420pack : enable\n"
-                                      "layout (binding = 0) uniform sampler2D tex;\n"
+                                      "layout (binding = 1) uniform sampler2D tex;\n"
                                       "layout (location = 0) in vec2 texcoord;\n"
                                       "layout (location = 0) out vec4 uFragColor;\n"
                                       "void main() {\n"
@@ -106,7 +105,7 @@ private:
 
   struct VulkanDeviceInfo {
     bool initialized_;
-    bool textureDataInitialized_;
+    bool cameraInitialized_;
 
     VkInstance instance_;
     VkPhysicalDevice gpuDevice_;
@@ -157,12 +156,12 @@ private:
   };
   VulkanGfxPipelineInfo gfxPipeline;
 
-  struct VulkanUniformBuffersInfo {
-    VkBuffer* uniformBuffers;
-    VkDeviceMemory* uniformBuffersMemory;
-    void* uniformBuffersMapped;
+  struct VulkanUniformBufferInfo {
+    VkBuffer uniformBuffer;
+    VkDeviceMemory uniformBufferMemory;
+    void* uniformBufferMapped;
   };
-  VulkanUniformBuffersInfo uboInfo;
+  VulkanUniformBufferInfo uboInfo;
 
   struct VulkanRenderInfo {
     VkRenderPass renderPass_;
@@ -188,9 +187,9 @@ private:
 
   void createGraphicsPipeline();
 
-  void createCombinedImageSamplerDescriptorSet();
+  void createDescriptorSet();
 
-  void createUniformBufferDescriptorSet();
+  void createUniformBuffer();
 
   void createOtherStaff();
 

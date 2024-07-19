@@ -276,25 +276,52 @@ void VulkanRenderer::createFrameBuffers() {
     CALL_VK(vkCreateFramebuffer(device.device_, &fbCreateInfo, nullptr,
                                 &swapchain.framebuffers_[i]))
   }
-  LOGI("-<createFrameBuffers");
+  LOGI("<-createFrameBuffers");
+}
+
+void VulkanRenderer::createUniformBuffer() {
+  createBuffer(
+          sizeof(UniformBufferObject),
+          VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+          uboInfo.uniformBuffer,
+          uboInfo.uniformBufferMemory
+  );
+  CALL_VK(vkMapMemory(
+          device.device_,
+          uboInfo.uniformBufferMemory,
+          0,
+          sizeof(UniformBufferObject),
+          0,
+          &uboInfo.uniformBufferMapped)
+  )
 }
 
 void VulkanRenderer::createGraphicsPipeline() {
   LOGI("->createGraphicsPipeline");
   memset(&gfxPipeline, 0, sizeof(gfxPipeline));
 
-  const VkDescriptorSetLayoutBinding descriptorSetLayoutBinding{
+  const VkDescriptorSetLayoutBinding uboLayoutBinding = {
           .binding = 0,
+          .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+          .descriptorCount = 1,
+          .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+          .pImmutableSamplers = nullptr,
+  };
+  const VkDescriptorSetLayoutBinding imageLayoutBinding {
+          .binding = 1,
           .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
           .descriptorCount = 1,
           .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
           .pImmutableSamplers = nullptr,
   };
+  const auto bindings = new VkDescriptorSetLayoutBinding [2];
+  bindings[0] = uboLayoutBinding;
+  bindings[1] = imageLayoutBinding;
   const VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
           .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-          .pNext = nullptr,
-          .bindingCount = 1,
-          .pBindings = &descriptorSetLayoutBinding,
+          .bindingCount = 2,
+          .pBindings = bindings,
   };
   CALL_VK(vkCreateDescriptorSetLayout(device.device_,
                                       &descriptorSetLayoutCreateInfo, nullptr,
@@ -308,8 +335,7 @@ void VulkanRenderer::createGraphicsPipeline() {
           .pPushConstantRanges = nullptr,
   };
   CALL_VK(vkCreatePipelineLayout(device.device_, &pipelineLayoutCreateInfo,
-                                 nullptr, &gfxPipeline.layout_));
-
+                                 nullptr, &gfxPipeline.layout_))
   // No dynamic state in that tutorial
   VkPipelineDynamicStateCreateInfo dynamicStateInfo{
           .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
@@ -575,7 +601,7 @@ void VulkanRenderer::createBuffer(
                        properties,
                        &allocInfo.memoryTypeIndex);
   CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &bufferMemory));
-  CALL_VK(vkBindBufferMemory(device.device_, buffers.vertexBuf_, bufferMemory, 0));
+  CALL_VK(vkBindBufferMemory(device.device_, buffer, bufferMemory, 0));
 }
 
 void VulkanRenderer::mapMemoryTypeToIndex(uint32_t typeBits,
@@ -740,7 +766,7 @@ void VulkanRenderer::renderImpl() {
   // Get the framebuffer index we should draw in
   CALL_VK(vkAcquireNextImageKHR(device.device_, swapchain.swapchain_,
                                 UINT64_MAX, renderInfo.semaphore_, VK_NULL_HANDLE,
-                                &nextIndex));
+                                &nextIndex))
   CALL_VK(vkResetFences(device.device_, 1, &renderInfo.fence_));
 
   VkPipelineStageFlags waitStageMask =
@@ -773,21 +799,27 @@ void VulkanRenderer::renderImpl() {
   vkQueuePresentKHR(device.queue_, &presentInfo);
 }
 
-void VulkanRenderer::createCombinedImageSamplerDescriptorSet() {
+void VulkanRenderer::createDescriptorSet() {
   LOGI("->createDescriptorSet");
-  const VkDescriptorPoolSize type_count = {
+  const VkDescriptorPoolSize poolSizeUbo = {
+          .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+          .descriptorCount = 1
+  };
+  const VkDescriptorPoolSize poolSizeSampler = {
           .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
           .descriptorCount = 1,
   };
-  const VkDescriptorPoolCreateInfo descriptor_pool = {
+  const auto poolSizes = new VkDescriptorPoolSize [2];
+  poolSizes[0] = poolSizeUbo;
+  poolSizes[1] = poolSizeSampler;
+  const VkDescriptorPoolCreateInfo poolCreateInfo = {
           .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
           .pNext = nullptr,
           .maxSets = 1,
-          .poolSizeCount = 1,
-          .pPoolSizes = &type_count,
+          .poolSizeCount = 2,
+          .pPoolSizes = poolSizes,
   };
-
-  CALL_VK(vkCreateDescriptorPool(device.device_, &descriptor_pool, nullptr,
+  CALL_VK(vkCreateDescriptorPool(device.device_, &poolCreateInfo, nullptr,
                                  &gfxPipeline.descPool_));
 
   VkDescriptorSetAllocateInfo alloc_info{
@@ -889,25 +921,43 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
   };
   CALL_VK(vkCreateImageView(device.device_, &view, nullptr, &tex_obj.view))
-  VkDescriptorImageInfo texDst = {
+  VkDescriptorImageInfo imageInfo = {
           .sampler = tex_obj.sampler,
           .imageView = tex_obj.view,
           .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
   };
-  VkWriteDescriptorSet writeDst{
+  VkDescriptorBufferInfo bufferInfo = {
+          .buffer = uboInfo.uniformBuffer,
+          .offset = 0,
+          .range = sizeof(UniformBufferObject)
+  };
+  const auto descriptorWrites = new VkWriteDescriptorSet [2];
+  VkWriteDescriptorSet bufferWrite = {
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-          .pNext = nullptr,
           .dstSet = gfxPipeline.descSet_,
           .dstBinding = 0,
           .dstArrayElement = 0,
           .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+          .pImageInfo = nullptr,
+          .pBufferInfo = &bufferInfo,
+          .pTexelBufferView = nullptr
+  };
+  VkWriteDescriptorSet imageWrite = {
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = gfxPipeline.descSet_,
+          .dstBinding = 1,
+          .dstArrayElement = 0,
+          .descriptorCount = 1,
           .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-          .pImageInfo = &texDst,
+          .pImageInfo = &imageInfo,
           .pBufferInfo = nullptr,
           .pTexelBufferView = nullptr};
-  vkUpdateDescriptorSets(device.device_, 1, &writeDst, 0, nullptr);
+  descriptorWrites[0] = bufferWrite;
+  descriptorWrites[1] = imageWrite;
+  vkUpdateDescriptorSets(device.device_, 2, descriptorWrites, 0, nullptr);
   recordCommandBuffer();
-  device.textureDataInitialized_ = true;
+  device.cameraInitialized_ = true;
 }
 
 void VulkanRenderer::recordCommandBuffer() {
@@ -965,37 +1015,19 @@ void VulkanRenderer::recordCommandBuffer() {
 }
 
 void VulkanRenderer::onMvpUpdated() {
-
-}
-
-void VulkanRenderer::createUniformBufferDescriptorSet() {
-  VkDescriptorSetLayoutBinding uboLayoutBinding = {
-          .binding = 0,
-          .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-          .descriptorCount = 1,
-          .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-          .pImmutableSamplers = nullptr,
-  };
-  VkDescriptorSetLayout descriptorSetLayout;
-  VkDescriptorSetLayoutCreateInfo layoutInfo = {
-          .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-          .bindingCount = 1,
-          .pBindings = &uboLayoutBinding,
-  };
-  CALL_VK(vkCreateDescriptorSetLayout(device.device_, &layoutInfo, nullptr, &descriptorSetLayout))
-
-  // TODO
+  UniformBufferObject ubo{};
+  ubo.mvp = mvp;
+  memcpy(uboInfo.uniformBufferMapped, &ubo, sizeof(ubo));
+  LOGI("MVP: %s", glm::to_string(ubo.mvp).c_str());
 }
 
 void VulkanRenderer::createVertexBuffer() {
-  // Vertex positions
   const float vertexData[] = {
           -1.0f, -1.0f, 0.0f,0.0f,
           1.0f, -1.0f, 1.0f,  0.0f,
           -1.0f, 1.0f,0.0f, 1.0f,
           1.0f, 1.0f, 1.0f, 1.0f,
   };
-  // Allocate memory for the buffer
   VkDeviceMemory vertexBufferMemory;
   createBuffer(
           sizeof(vertexData),
