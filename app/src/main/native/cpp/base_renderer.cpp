@@ -59,16 +59,20 @@ void BaseRenderer::resetWindow() {
   LOGI("Android surface destroyed, resuming main thread!");
 }
 
-void BaseRenderer::feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer) {
+void BaseRenderer::feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer, int rotationDegrees_) {
   AHardwareBuffer_acquire(aHardwareBuffer);
   LOGI("Buffer %p acquired" , aHardwareBuffer);
-  renderThread->scheduleTask([aHardwareBuffer, this] {
+  renderThread->scheduleTask([aHardwareBuffer, rotationDegrees_, this] {
     AHardwareBuffer_Desc description;
     AHardwareBuffer_describe(aHardwareBuffer, &description);
     const auto bufferImageRatio_ =
             static_cast<float>(description.width) / static_cast<float>(description.height);
     if (bufferImageRatio_ != bufferImageRatio) {
       bufferImageRatio = bufferImageRatio_;
+      updateMvp();
+    }
+    if (rotationDegrees_ != rotationDegrees) {
+      rotationDegrees = rotationDegrees_;
       updateMvp();
     }
     bufferMutex.lock();
@@ -86,13 +90,20 @@ void BaseRenderer::updateMvp() {
   float viewportRatio =
           static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
   float ratio = viewportRatio * bufferImageRatio;
-  auto proj = glm::frustum(-ratio, ratio, -1.f, 1.f, 3.f, 7.f);
+  auto proj = glm::perspective(glm::radians(45.f), ratio, 0.1f, 100.0f);
+//  proj[1][1] *= -1.f;
+  LOGI("PROJ: %s", glm::to_string(proj).c_str());
   auto view = glm::lookAt(
-          glm::vec3(0.f, 0.f, 3.f),
+          glm::vec3(0.f, 0.f, 5.f),
           glm::vec3(0.f, 0.f, 0.f),
-          glm::vec3(1.f, 0.f, 0.f)
+          glm::vec3(0.f, -1.f, 0.f)
   );
-  mvp = proj * view;
+  auto model = glm::rotate(
+          glm::mat4(1.0f),
+          glm::radians(static_cast<float>(rotationDegrees)),
+          glm::vec3(0.0f, 0.0f, 1.0f)
+          );
+  mvp = proj * view * model;
   onMvpUpdated();
 }
 

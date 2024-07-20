@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.hardware.HardwareBuffer
 import android.os.Bundle
 import android.util.Log
+import android.view.Surface
 import android.view.SurfaceView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -100,7 +101,7 @@ class CameraActivity : AppCompatActivity() {
                 Log.i(TAG, "New image arrived!")
                 imageProxy.image?.hardwareBuffer?.let { buffer ->
                     buffer.printSupportedUsageFlags()
-                    coreEngine.feedHardwareBuffer(buffer)
+                    coreEngine.feedHardwareBuffer(buffer, imageProxy.imageInfo.rotationDegrees)
                     // from docs for `buffer.close()`:
                     // Calling this method frees up any underlying native resources.
                     //

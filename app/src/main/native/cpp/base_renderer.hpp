@@ -33,7 +33,7 @@ public:
      * Always called from camera worker thread - feed new camera buffer.
      * @param aHardwareBuffer
      */
-    void feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer);
+    void feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer, int rotationDegrees_);
 
 protected:
     virtual const char *renderingModeName() = 0;
@@ -76,6 +76,7 @@ private:
     void updateMvp();
 
     float bufferImageRatio = 1.0f;
+    int rotationDegrees = 0;
 
     std::unique_ptr <LooperThread> renderThread;
     std::mutex mutex;

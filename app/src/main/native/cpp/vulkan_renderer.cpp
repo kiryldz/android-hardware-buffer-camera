@@ -1016,11 +1016,8 @@ void VulkanRenderer::recordCommandBuffer() {
 
 void VulkanRenderer::onMvpUpdated() {
   UniformBufferObject ubo{};
-  // TODO something is wrong with the matrix
-//  ubo.mvp = mvp;
-  ubo.mvp = glm::mat4 (1.f);
+  ubo.mvp = mvp;
   memcpy(uboInfo.uniformBufferMapped, &ubo, sizeof(ubo));
-  LOGI("MVP: %s", glm::to_string(ubo.mvp).c_str());
 }
 
 void VulkanRenderer::createVertexBuffer() {
