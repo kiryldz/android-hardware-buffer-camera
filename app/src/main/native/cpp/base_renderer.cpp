@@ -99,10 +99,11 @@ void BaseRenderer::updateMvp() {
     proj[1][1] *= -1.f;
   }
   auto view = glm::lookAt(
-          // TODO make f(pov) and 3.f
+          // TODO make z = f(pov) and not hardcoded 3.f
           glm::vec3(0.f, 0.f, 3.f),
           glm::vec3(0.f, 0.f, 0.f),
-          // in all the examples Y is expected to be 1.f but the actual image from camera is then flipped
+          // in majority of examples Y is expected to be 1.f but the actual image from camera is then flipped
+          // so using Y = -1.f
           glm::vec3(0.f, -1.f, 0.f)
   );
   auto model = glm::rotate(

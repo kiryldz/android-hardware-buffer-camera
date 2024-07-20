@@ -29,14 +29,19 @@ class CameraActivity : AppCompatActivity() {
     private val permissions = listOf(Manifest.permission.CAMERA)
     private val permissionsRequestCode = Random.nextInt(0, 10000)
 
-    private lateinit var coreEngine: CoreEngine
+    private lateinit var coreEngineVulkan: CoreEngine
+    private lateinit var coreEngineOpenGL: CoreEngine
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        coreEngine = CoreEngine(
-            surfaceHolder = findViewById<SurfaceView>(R.id.surface_view).holder,
+        coreEngineVulkan = CoreEngine(
+            surfaceHolder = findViewById<SurfaceView>(R.id.surface_view_vulkan).holder,
             renderingMode = RenderingMode.VULKAN,
+        )
+        coreEngineOpenGL = CoreEngine(
+            surfaceHolder = findViewById<SurfaceView>(R.id.surface_view_opengl).holder,
+            renderingMode = RenderingMode.OPEN_GL_ES,
         )
     }
 
@@ -54,7 +59,8 @@ class CameraActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        coreEngine.destroy()
+        coreEngineVulkan.destroy()
+        coreEngineOpenGL.destroy()
     }
 
     override fun onRequestPermissionsResult(
@@ -101,7 +107,8 @@ class CameraActivity : AppCompatActivity() {
                 Log.i(TAG, "New image arrived!")
                 imageProxy.image?.hardwareBuffer?.let { buffer ->
                     buffer.printSupportedUsageFlags()
-                    coreEngine.feedHardwareBuffer(buffer, imageProxy.imageInfo.rotationDegrees)
+                    coreEngineVulkan.feedHardwareBuffer(buffer, imageProxy.imageInfo.rotationDegrees)
+                    coreEngineOpenGL.feedHardwareBuffer(buffer, imageProxy.imageInfo.rotationDegrees)
                     // from docs for `buffer.close()`:
                     // Calling this method frees up any underlying native resources.
                     //

@@ -60,7 +60,11 @@ void CoreEngine::nativeFeedHardwareBuffer(JNIEnv &env,
             .format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM,
             .usage = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE | AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER,
     };
-    static int result = AHardwareBuffer_allocate(&gpuBufferDescription, &gpuBuffer);
+    if (!gpuBuffer) {
+      int res = AHardwareBuffer_allocate(&gpuBufferDescription, &gpuBuffer);
+      LOGI("HW buffer from camera does not support AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE.");
+      LOGI("Allocating GPU HW buffer manually. Result: %d", res);
+    }
     void* gpuData = nullptr;
     void* cpuData = nullptr;
     AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
