@@ -79,12 +79,12 @@ private:
                                    "layout (binding = 0) uniform UniformBufferObject {\n"
                                    "    mat4 mvp;\n"
                                    "} ubo;\n"
-                                   "layout (location = 0) in vec4 pos;\n"
+                                   "layout (location = 0) in vec2 pos;\n"
                                    "layout (location = 1) in vec2 attr;\n"
                                    "layout (location = 0) out vec2 texcoord;\n"
                                    "void main() {\n"
                                    "   texcoord = attr;\n"
-                                   "   gl_Position = ubo.mvp * pos;\n"
+                                   "   gl_Position = ubo.mvp * vec4(pos, 0.0, 1.0);\n"
                                    "}";
 
   const char  *fragmentShaderSource = "#version 450\n"

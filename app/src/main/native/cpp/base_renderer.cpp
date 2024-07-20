@@ -90,12 +90,19 @@ void BaseRenderer::updateMvp() {
   float viewportRatio =
           static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
   float ratio = viewportRatio * bufferImageRatio;
-  auto proj = glm::perspective(glm::radians(45.f), ratio, 0.1f, 100.0f);
-//  proj[1][1] *= -1.f;
-  LOGI("PROJ: %s", glm::to_string(proj).c_str());
+  float fov = 45.f;
+  auto proj = glm::perspective(glm::radians(fov), ratio, 0.1f, 100.0f);
+  if (strcmp(this->renderingModeName(), "Vulkan") == 0) {
+    // GLM was originally designed for OpenGL, where the Y coordinate of the clip coordinates is inverted.
+    // The easiest way to compensate for that is to flip the sign on the scaling factor of the Y axis in the projection matrix.
+    // If you don't do this, then the image will be rendered upside down.
+    proj[1][1] *= -1.f;
+  }
   auto view = glm::lookAt(
-          glm::vec3(0.f, 0.f, 5.f),
+          // TODO make f(pov) and 3.f
+          glm::vec3(0.f, 0.f, 3.f),
           glm::vec3(0.f, 0.f, 0.f),
+          // in all the examples Y is expected to be 1.f but the actual image from camera is then flipped
           glm::vec3(0.f, -1.f, 0.f)
   );
   auto model = glm::rotate(
