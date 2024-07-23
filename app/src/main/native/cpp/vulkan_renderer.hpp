@@ -21,7 +21,7 @@ protected:
       LOGE("Vulkan is unavailable, install vulkan and re-start");
       return false;
     }
-
+    LOGI("->onWindowCreated");
     VkApplicationInfo appInfo = {
             .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
             .pNext = nullptr,
@@ -35,22 +35,33 @@ protected:
     createVulkanDevice(&appInfo);
     createSwapChain();
     createRenderPass();
-    createFrameBuffers();
+    createFrameBuffersAndImages();
     createVertexBuffer();
     createUniformBuffer();
     createGraphicsPipeline();
     createDescriptorSet();
     createOtherStaff();
     device.initialized_ = true;
+    LOGI("<-onWindowCreated");
     return true;
   }
 
   void onWindowSizeUpdated(int width, int height) override {
-    // TODO recreate what's needed in case of resize
+    if (width != swapchain.displaySize_.width || height != swapchain.displaySize_.height) {
+      LOGI("->onWindowSizeUpdated");
+      CALL_VK(vkDeviceWaitIdle(device.device_))
+      cleanupSwapChain();
+      createSwapChain();
+      createFrameBuffersAndImages();
+      LOGI("<-onWindowSizeUpdated");
+    }
   }
 
   void onWindowDestroyed() override {
-    // TODO
+    CALL_VK(vkDeviceWaitIdle(device.device_))
+    cleanup();
+    device.initialized_ = false;
+    device.cameraInitialized_ = false;
   }
 
   void hwBufferToTexture(AHardwareBuffer *buffer) override;
@@ -132,17 +143,21 @@ private:
   };
   VulkanSwapchainInfo swapchain;
 
-  typedef struct texture_object {
+  typedef struct VulkanExternalTextureInfo {
     VkSampler sampler;
     VkImage image;
     VkDeviceMemory mem;
     VkImageView view;
-  } texture_object;
+  } VulkanExternalTextureInfo;
   static const VkFormat kTexFmt = VK_FORMAT_R8G8B8A8_UNORM;
-  struct texture_object tex_obj;
+  struct VulkanExternalTextureInfo tex;
 
   struct VulkanBufferInfo {
-    VkBuffer vertexBuf_;
+    VkBuffer vertexBuf;
+    VkBuffer uniformBuf;
+    VkDeviceMemory uniformBufferMemory;
+    VkDeviceMemory vertexBufferMemory;
+    void* uniformBufferMapped;
   };
   VulkanBufferInfo buffers;
 
@@ -155,13 +170,6 @@ private:
     VkPipeline pipeline_;
   };
   VulkanGfxPipelineInfo gfxPipeline;
-
-  struct VulkanUniformBufferInfo {
-    VkBuffer uniformBuffer;
-    VkDeviceMemory uniformBufferMemory;
-    void* uniformBufferMapped;
-  };
-  VulkanUniformBufferInfo uboInfo;
 
   struct VulkanRenderInfo {
     VkRenderPass renderPass_;
@@ -181,7 +189,7 @@ private:
 
   void createRenderPass();
 
-  void createFrameBuffers();
+  void createFrameBuffersAndImages();
 
   void createVertexBuffer();
 
@@ -194,6 +202,12 @@ private:
   void createOtherStaff();
 
   void recordCommandBuffer();
+
+  ////// Destroy functions
+
+  void cleanupSwapChain();
+
+  void cleanup();
 
   ////// Helper functions
 

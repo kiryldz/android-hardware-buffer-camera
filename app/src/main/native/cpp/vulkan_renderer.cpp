@@ -214,7 +214,7 @@ void VulkanRenderer::createSwapChain() {
   LOGI("<-createSwapChain");
 }
 
-void VulkanRenderer::createFrameBuffers() {
+void VulkanRenderer::createFrameBuffersAndImages() {
   LOGI("->createFrameBuffers");
   // query display attachment to swapchain
   uint32_t swapchainImagesCount = 0;
@@ -284,16 +284,16 @@ void VulkanRenderer::createUniformBuffer() {
           sizeof(UniformBufferObject),
           VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-          uboInfo.uniformBuffer,
-          uboInfo.uniformBufferMemory
+          buffers.uniformBuf,
+          buffers.uniformBufferMemory
   );
   CALL_VK(vkMapMemory(
           device.device_,
-          uboInfo.uniformBufferMemory,
+          buffers.uniformBufferMemory,
           0,
           sizeof(UniformBufferObject),
           0,
-          &uboInfo.uniformBufferMapped)
+          &buffers.uniformBufferMapped)
   )
 }
 
@@ -336,7 +336,7 @@ void VulkanRenderer::createGraphicsPipeline() {
   };
   CALL_VK(vkCreatePipelineLayout(device.device_, &pipelineLayoutCreateInfo,
                                  nullptr, &gfxPipeline.layout_))
-  // No dynamic state in that tutorial
+  // no dynamic state - we will re-create the swapchain fully if the window is resized
   VkPipelineDynamicStateCreateInfo dynamicStateInfo{
           .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
           .pNext = nullptr,
@@ -715,7 +715,7 @@ void VulkanRenderer::createOtherStaff() {
           .unnormalizedCoordinates = VK_FALSE,
   };
   CALL_VK(vkCreateSampler(device.device_, &sampler, nullptr,
-                          &tex_obj.sampler));
+                          &tex.sampler));
 
   // Create a pool of command buffers to allocate command buffer from
   VkCommandPoolCreateInfo cmdPoolCreateInfo{
@@ -834,6 +834,9 @@ void VulkanRenderer::createDescriptorSet() {
 }
 
 void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
+  if (!device.initialized_) {
+    return;
+  }
   VkAndroidHardwareBufferFormatPropertiesANDROID ahb_format_props = {
           .sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID,
           .pNext = nullptr,
@@ -897,20 +900,21 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           // VK_IMAGE_LAYOUT_UNDEFINED is mandatory when using external memory
           .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
   };
-  if (tex_obj.mem) {
-    vkDestroyImage(device.device_, tex_obj.image, nullptr);
-    vkFreeMemory(device.device_, tex_obj.mem, nullptr);
+  if (device.cameraInitialized_) {
+    vkDestroyImage(device.device_, tex.image, nullptr);
+    vkDestroyImageView(device.device_, tex.view, nullptr);
+    vkFreeMemory(device.device_, tex.mem, nullptr);
   }
   CALL_VK(vkCreateImage(device.device_, &image_create_info, nullptr,
-                        &tex_obj.image))
-  dedicatedAllocateInfo.image = tex_obj.image;
-  CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &tex_obj.mem))
-  CALL_VK(vkBindImageMemory(device.device_, tex_obj.image, tex_obj.mem, 0))
+                        &tex.image))
+  dedicatedAllocateInfo.image = tex.image;
+  CALL_VK(vkAllocateMemory(device.device_, &allocInfo, nullptr, &tex.mem))
+  CALL_VK(vkBindImageMemory(device.device_, tex.image, tex.mem, 0))
   VkImageViewCreateInfo view = {
           .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
           .pNext = nullptr,
           .flags = 0,
-          .image = tex_obj.image,
+          .image = tex.image,
           .viewType = VK_IMAGE_VIEW_TYPE_2D,
           .format = kTexFmt,
           .components =
@@ -918,16 +922,22 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
                           VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G,
                           VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A,
                   },
-          .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
+          .subresourceRange = {
+                  VK_IMAGE_ASPECT_COLOR_BIT,
+                  0,
+                  1,
+                  0,
+                  1
+                  },
   };
-  CALL_VK(vkCreateImageView(device.device_, &view, nullptr, &tex_obj.view))
+  CALL_VK(vkCreateImageView(device.device_, &view, nullptr, &tex.view))
   VkDescriptorImageInfo imageInfo = {
-          .sampler = tex_obj.sampler,
-          .imageView = tex_obj.view,
+          .sampler = tex.sampler,
+          .imageView = tex.view,
           .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
   };
   VkDescriptorBufferInfo bufferInfo = {
-          .buffer = uboInfo.uniformBuffer,
+          .buffer = buffers.uniformBuf,
           .offset = 0,
           .range = sizeof(UniformBufferObject)
   };
@@ -973,7 +983,7 @@ void VulkanRenderer::recordCommandBuffer() {
                                  &cmdBufferBeginInfo));
 
     setImageLayout(renderInfo.cmdBuffer_[bufferIndex],
-                   tex_obj.image,
+                   tex.image,
                    VK_IMAGE_LAYOUT_UNDEFINED,
                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                    VK_PIPELINE_STAGE_HOST_BIT,
@@ -981,7 +991,7 @@ void VulkanRenderer::recordCommandBuffer() {
     // Now we start a renderpass. Any draw command has to be recorded in a
     // renderpass
     VkClearValue clearVals{
-            .color { .float32 { 0.0f, 0.34f, 0.90f, 1.0f,}},
+            .color { .float32 { 0.9f, 0.3f, 0.0f, 1.0f,}},
     };
 
     VkRenderPassBeginInfo renderPassBeginInfo{
@@ -1006,7 +1016,7 @@ void VulkanRenderer::recordCommandBuffer() {
             gfxPipeline.layout_, 0, 1, &gfxPipeline.descSet_, 0, nullptr);
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(renderInfo.cmdBuffer_[bufferIndex], 0, 1,
-                           &buffers.vertexBuf_, &offset);
+                           &buffers.vertexBuf, &offset);
 
     vkCmdDraw(renderInfo.cmdBuffer_[bufferIndex], 4, 1, 0, 0);
     vkCmdEndRenderPass(renderInfo.cmdBuffer_[bufferIndex]);
@@ -1017,7 +1027,7 @@ void VulkanRenderer::recordCommandBuffer() {
 void VulkanRenderer::onMvpUpdated() {
   UniformBufferObject ubo{};
   ubo.mvp = mvp;
-  memcpy(uboInfo.uniformBufferMapped, &ubo, sizeof(ubo));
+  memcpy(buffers.uniformBufferMapped, &ubo, sizeof(ubo));
 }
 
 void VulkanRenderer::createVertexBuffer() {
@@ -1027,20 +1037,59 @@ void VulkanRenderer::createVertexBuffer() {
           -1.0f, 1.0f,0.0f, 1.0f,
           1.0f, 1.0f, 1.0f, 1.0f,
   };
-  VkDeviceMemory vertexBufferMemory;
   createBuffer(
           sizeof(vertexData),
           VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-          buffers.vertexBuf_,
-          vertexBufferMemory
+          buffers.vertexBuf,
+          buffers.vertexBufferMemory
   );
 
   void* data;
-  CALL_VK(vkMapMemory(device.device_, vertexBufferMemory, 0, sizeof(vertexData),
+  CALL_VK(vkMapMemory(device.device_, buffers.vertexBufferMemory, 0, sizeof(vertexData),
                       0, &data))
   memcpy(data, vertexData, sizeof(vertexData));
-  vkUnmapMemory(device.device_, vertexBufferMemory);
+  vkUnmapMemory(device.device_, buffers.vertexBufferMemory);
+}
+
+void VulkanRenderer::cleanupSwapChain() {
+  for (int i = 0; i < swapchain.swapchainLength_; ++i) {
+    vkDestroyFramebuffer(device.device_, swapchain.framebuffers_[i], nullptr);
+    vkDestroyImageView(device.device_, swapchain.displayViews_[i], nullptr);
+  }
+  vkDestroySwapchainKHR(device.device_, swapchain.swapchain_, nullptr);
+}
+
+void VulkanRenderer::cleanup() {
+  if (!device.initialized_) {
+    LOGI("Cleanup called but Vulkan was not initialized.");
+    return;
+  }
+  LOGI("->cleanup");
+  cleanupSwapChain();
+  vkDestroyPipeline(device.device_, gfxPipeline.pipeline_, nullptr);
+  vkDestroyPipelineLayout(device.device_, gfxPipeline.layout_, nullptr);
+  vkDestroyPipelineCache(device.device_, gfxPipeline.cache_, nullptr);
+  vkDestroyRenderPass(device.device_, renderInfo.renderPass_, nullptr);
+  vkDestroySemaphore(device.device_, renderInfo.semaphore_, nullptr);
+  vkDestroyFence(device.device_, renderInfo.fence_, nullptr);
+  vkDestroyCommandPool(device.device_, renderInfo.cmdPool_, nullptr);
+  vkDestroySampler(device.device_, tex.sampler, nullptr);
+  if (device.cameraInitialized_) {
+    vkDestroyImage(device.device_, tex.image, nullptr);
+    vkDestroyImageView(device.device_, tex.view, nullptr);
+    vkFreeMemory(device.device_, tex.mem, nullptr);
+  }
+  vkDestroyDescriptorSetLayout(device.device_, gfxPipeline.dscLayout_, nullptr);
+  vkDestroyDescriptorPool(device.device_, gfxPipeline.descPool_, nullptr);
+  vkDestroyBuffer(device.device_, buffers.uniformBuf, nullptr);
+  vkDestroyBuffer(device.device_, buffers.vertexBuf, nullptr);
+  vkFreeMemory(device.device_, buffers.uniformBufferMemory, nullptr);
+  vkFreeMemory(device.device_, buffers.vertexBufferMemory, nullptr);
+  vkDestroyDevice(device.device_, nullptr);
+  vkDestroySurfaceKHR(device.instance_, device.surface_, nullptr);
+  vkDestroyInstance(device.instance_, nullptr);
+  LOGI("<-cleanup");
 }
 
 } // namespace android

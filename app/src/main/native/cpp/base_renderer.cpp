@@ -35,12 +35,13 @@ void BaseRenderer::updateWindowSize(int width, int height) {
     // calculate MVP on CPU, if we would know it will be updated more often -
     // of course better move matrix calculation to GPU
     if (viewportWidth != width || viewportHeight != height) {
-      updateMvp();
       viewportWidth = width;
       viewportHeight = height;
       LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
       onWindowSizeUpdated(width, height);
     }
+    // update MVP in any case to cover the use-case of brining app to background and back
+    updateMvp();
   });
 }
 
