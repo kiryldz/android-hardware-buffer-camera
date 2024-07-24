@@ -83,7 +83,8 @@ void VulkanRenderer::createVulkanDevice(VkApplicationInfo *appInfo) {
           .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
           .pNext = nullptr,
           .flags = 0,
-          .window = aNativeWindow};
+          .window = aNativeWindow
+  };
 
   CALL_VK(vkCreateAndroidSurfaceKHR(device.instance_, &createInfo, nullptr,
                                     &device.surface_));
@@ -149,10 +150,8 @@ void VulkanRenderer::createVulkanDevice(VkApplicationInfo *appInfo) {
   vkGetDeviceQueue(device.device_, 0, 0, &device.queue_);
 }
 
-void VulkanRenderer::createSwapChain() {
+void VulkanRenderer::createSwapChain(uint32_t width, uint32_t height) {
   LOGI("->createSwapChain");
-  memset(&swapchain, 0, sizeof(swapchain));
-
   // **********************************************************
   // Get the surface capabilities because:
   //   - It contains the minimal and max length of the chain, we will need it
@@ -176,7 +175,14 @@ void VulkanRenderer::createSwapChain() {
   }
   assert(chosenFormat < formatCount);
 
-  swapchain.displaySize_ = surfaceCapabilities.currentExtent;
+  if (width == 0 && height == 0) {
+    swapchain.displaySize_ = surfaceCapabilities.currentExtent;
+  } else {
+    swapchain.displaySize_ = VkExtent2D {
+      .width = width,
+      .height = height
+    };
+  }
   LOGI("Display size w=%i, h=%i", swapchain.displaySize_.width, swapchain.displaySize_.height);
   swapchain.displayFormat_ = formats[chosenFormat].format;
 
@@ -191,7 +197,7 @@ void VulkanRenderer::createSwapChain() {
           .minImageCount = surfaceCapabilities.minImageCount,
           .imageFormat = formats[chosenFormat].format,
           .imageColorSpace = formats[chosenFormat].colorSpace,
-          .imageExtent = surfaceCapabilities.currentExtent,
+          .imageExtent = swapchain.displaySize_,
           .imageArrayLayers = 1,
           .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
           .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
@@ -299,8 +305,6 @@ void VulkanRenderer::createUniformBuffer() {
 
 void VulkanRenderer::createGraphicsPipeline() {
   LOGI("->createGraphicsPipeline");
-  memset(&gfxPipeline, 0, sizeof(gfxPipeline));
-
   const VkDescriptorSetLayoutBinding uboLayoutBinding = {
           .binding = 0,
           .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -326,6 +330,7 @@ void VulkanRenderer::createGraphicsPipeline() {
   CALL_VK(vkCreateDescriptorSetLayout(device.device_,
                                       &descriptorSetLayoutCreateInfo, nullptr,
                                       &gfxPipeline.dscLayout_));
+  delete[] bindings;
   VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{
           .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
           .pNext = nullptr,
@@ -334,14 +339,17 @@ void VulkanRenderer::createGraphicsPipeline() {
           .pushConstantRangeCount = 0,
           .pPushConstantRanges = nullptr,
   };
-  CALL_VK(vkCreatePipelineLayout(device.device_, &pipelineLayoutCreateInfo,
-                                 nullptr, &gfxPipeline.layout_))
-  // no dynamic state - we will re-create the swapchain fully if the window is resized
+  CALL_VK(vkCreatePipelineLayout(device.device_, &pipelineLayoutCreateInfo,nullptr, &gfxPipeline.layout_))
+  auto dynamicStates = new VkDynamicState[2] {
+          VK_DYNAMIC_STATE_VIEWPORT,
+          VK_DYNAMIC_STATE_SCISSOR
+  };
   VkPipelineDynamicStateCreateInfo dynamicStateInfo{
           .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
           .pNext = nullptr,
-          .dynamicStateCount = 0,
-          .pDynamicStates = nullptr};
+          .dynamicStateCount = 2,
+          .pDynamicStates = dynamicStates
+  };
 
   VkShaderModule vertexShader, fragmentShader;
   buildShaderFromFile(vertexShaderSource,
@@ -509,9 +517,9 @@ void VulkanRenderer::createGraphicsPipeline() {
           .basePipelineIndex = 0,
   };
 
-  VkResult pipelineResult = vkCreateGraphicsPipelines(
+  CALL_VK(vkCreateGraphicsPipelines(
           device.device_, gfxPipeline.cache_, 1, &pipelineCreateInfo, nullptr,
-          &gfxPipeline.pipeline_);
+          &gfxPipeline.pipeline_))
 
   // We don't need the shaders anymore, we can release their memory
   vkDestroyShaderModule(device.device_, vertexShader, nullptr);
@@ -821,6 +829,7 @@ void VulkanRenderer::createDescriptorSet() {
   };
   CALL_VK(vkCreateDescriptorPool(device.device_, &poolCreateInfo, nullptr,
                                  &gfxPipeline.descPool_));
+  delete[] poolSizes;
 
   VkDescriptorSetAllocateInfo alloc_info{
           .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -830,6 +839,7 @@ void VulkanRenderer::createDescriptorSet() {
           .pSetLayouts = &gfxPipeline.dscLayout_};
   CALL_VK(vkAllocateDescriptorSets(device.device_, &alloc_info,
                                    &gfxPipeline.descSet_));
+  gfxPipeline.descWrites_ = new VkWriteDescriptorSet [2];
   LOGI("<-createDescriptorSet");
 }
 
@@ -941,7 +951,6 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           .offset = 0,
           .range = sizeof(UniformBufferObject)
   };
-  const auto descriptorWrites = new VkWriteDescriptorSet [2];
   VkWriteDescriptorSet bufferWrite = {
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
           .dstSet = gfxPipeline.descSet_,
@@ -963,9 +972,9 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
           .pImageInfo = &imageInfo,
           .pBufferInfo = nullptr,
           .pTexelBufferView = nullptr};
-  descriptorWrites[0] = bufferWrite;
-  descriptorWrites[1] = imageWrite;
-  vkUpdateDescriptorSets(device.device_, 2, descriptorWrites, 0, nullptr);
+  gfxPipeline.descWrites_[0] = bufferWrite;
+  gfxPipeline.descWrites_[1] = imageWrite;
+  vkUpdateDescriptorSets(device.device_, 2, gfxPipeline.descWrites_, 0, nullptr);
   recordCommandBuffer();
   device.cameraInitialized_ = true;
 }
@@ -1011,6 +1020,21 @@ void VulkanRenderer::recordCommandBuffer() {
     // Bind what is necessary to the command buffer
     vkCmdBindPipeline(renderInfo.cmdBuffer_[bufferIndex],
                       VK_PIPELINE_BIND_POINT_GRAPHICS, gfxPipeline.pipeline_);
+    // As we support dynamic state for viewport and scissor - we must set them here
+    auto viewport = VkViewport {
+      .x = .0f,
+      .y = .1f,
+      .width = (float)swapchain.displaySize_.width,
+      .height = (float)swapchain.displaySize_.height,
+      .minDepth = .0f,
+      .maxDepth = .1f,
+    };
+    vkCmdSetViewport(renderInfo.cmdBuffer_[bufferIndex], 0, 1, &viewport);
+    auto scissor = VkRect2D {
+      .offset = {0, 0},
+      .extent = swapchain.displaySize_,
+    };
+    vkCmdSetScissor(renderInfo.cmdBuffer_[bufferIndex], 0, 1, &scissor);
     vkCmdBindDescriptorSets(
             renderInfo.cmdBuffer_[bufferIndex], VK_PIPELINE_BIND_POINT_GRAPHICS,
             gfxPipeline.layout_, 0, 1, &gfxPipeline.descSet_, 0, nullptr);
@@ -1028,6 +1052,7 @@ void VulkanRenderer::onMvpUpdated() {
   UniformBufferObject ubo{};
   ubo.mvp = mvp;
   memcpy(buffers.uniformBufferMapped, &ubo, sizeof(ubo));
+  LOGI("MVP updated");
 }
 
 void VulkanRenderer::createVertexBuffer() {
@@ -1053,11 +1078,13 @@ void VulkanRenderer::createVertexBuffer() {
 }
 
 void VulkanRenderer::cleanupSwapChain() {
+  LOGI("->cleanupSwapChain");
   for (int i = 0; i < swapchain.swapchainLength_; ++i) {
     vkDestroyFramebuffer(device.device_, swapchain.framebuffers_[i], nullptr);
     vkDestroyImageView(device.device_, swapchain.displayViews_[i], nullptr);
   }
   vkDestroySwapchainKHR(device.device_, swapchain.swapchain_, nullptr);
+  LOGI("<-cleanupSwapChain");
 }
 
 void VulkanRenderer::cleanup() {

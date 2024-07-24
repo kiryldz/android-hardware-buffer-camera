@@ -51,7 +51,7 @@ protected:
       LOGI("->onWindowSizeUpdated");
       CALL_VK(vkDeviceWaitIdle(device.device_))
       cleanupSwapChain();
-      createSwapChain();
+      createSwapChain(width, height);
       createFrameBuffersAndImages();
       LOGI("<-onWindowSizeUpdated");
     }
@@ -129,7 +129,7 @@ private:
   };
   VulkanDeviceInfo device;
 
-  struct VulkanSwapchainInfo {
+  typedef struct VulkanSwapchainInfo {
     VkSwapchainKHR swapchain_;
     uint32_t swapchainLength_;
 
@@ -140,7 +140,7 @@ private:
     VkFramebuffer* framebuffers_;
     VkImage* displayImages_;
     VkImageView* displayViews_;
-  };
+  } VulkanSwapchainInfo;
   VulkanSwapchainInfo swapchain;
 
   typedef struct VulkanExternalTextureInfo {
@@ -161,14 +161,15 @@ private:
   };
   VulkanBufferInfo buffers;
 
-  struct VulkanGfxPipelineInfo {
+  typedef struct VulkanGfxPipelineInfo {
     VkDescriptorSetLayout dscLayout_;
     VkDescriptorPool descPool_;
     VkDescriptorSet descSet_;
     VkPipelineLayout layout_;
     VkPipelineCache cache_;
     VkPipeline pipeline_;
-  };
+    VkWriteDescriptorSet* descWrites_;
+  } VulkanGfxPipelineInfo;
   VulkanGfxPipelineInfo gfxPipeline;
 
   struct VulkanRenderInfo {
@@ -185,7 +186,7 @@ private:
 
   void createVulkanDevice(VkApplicationInfo* appInfo);
 
-  void createSwapChain();
+  void createSwapChain(uint32_t width = 0, uint32_t height = 0);
 
   void createRenderPass();
 

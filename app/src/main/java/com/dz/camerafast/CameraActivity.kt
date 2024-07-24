@@ -6,9 +6,12 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.HardwareBuffer
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import android.view.SurfaceView
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
@@ -19,6 +22,7 @@ import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.os.postDelayed
 import androidx.lifecycle.LifecycleOwner
 import java.util.concurrent.Executors
 import kotlin.experimental.and
@@ -35,14 +39,22 @@ class CameraActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        val vulkanView = findViewById<SurfaceView>(R.id.surface_view_vulkan)
+        val openGlView = findViewById<SurfaceView>(R.id.surface_view_opengl)
         coreEngineVulkan = CoreEngine(
-            surfaceHolder = findViewById<SurfaceView>(R.id.surface_view_vulkan).holder,
+            surfaceHolder = vulkanView.holder,
             renderingMode = RenderingMode.VULKAN,
         )
         coreEngineOpenGL = CoreEngine(
-            surfaceHolder = findViewById<SurfaceView>(R.id.surface_view_opengl).holder,
+            surfaceHolder = openGlView.holder,
             renderingMode = RenderingMode.OPEN_GL_ES,
         )
+        vulkanView.setOnClickListener {
+            openGlView.visibility = View.GONE
+        }
+        openGlView.setOnClickListener {
+            vulkanView.visibility = View.GONE
+        }
     }
 
     override fun onResume() {
