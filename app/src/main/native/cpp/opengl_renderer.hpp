@@ -23,7 +23,6 @@ protected:
     }
 
     void onWindowSizeUpdated(int width, int height) override {
-        glClearColor(0.5, 0.5, 0.5, 0.5);
         glViewport(0, 0, width, height);
     }
 

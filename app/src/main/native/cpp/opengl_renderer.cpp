@@ -226,6 +226,7 @@ bool OpenGLRenderer::prepareEgl() {
        stringFromError(glGetError()),
        glGetString(GL_VERSION)
   );
+  glClearColor(0.5, 0.5, 0.5, 0.5);
   eglPrepared = true;
   return true;
 }

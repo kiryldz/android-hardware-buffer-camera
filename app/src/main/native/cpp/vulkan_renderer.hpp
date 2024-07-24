@@ -41,15 +41,15 @@ protected:
     createGraphicsPipeline();
     createDescriptorSet();
     createOtherStaff();
-    device.initialized_ = true;
+    deviceInfo.initialized = true;
     LOGI("<-onWindowCreated");
     return true;
   }
 
   void onWindowSizeUpdated(int width, int height) override {
-    if (width != swapchain.displaySize_.width || height != swapchain.displaySize_.height) {
+    if (width != swapchainInfo.displaySize.width || height != swapchainInfo.displaySize.height) {
       LOGI("->onWindowSizeUpdated");
-      CALL_VK(vkDeviceWaitIdle(device.device_))
+      CALL_VK(vkDeviceWaitIdle(deviceInfo.device))
       cleanupSwapChain();
       createSwapChain(width, height);
       createFrameBuffersAndImages();
@@ -58,10 +58,10 @@ protected:
   }
 
   void onWindowDestroyed() override {
-    CALL_VK(vkDeviceWaitIdle(device.device_))
+    CALL_VK(vkDeviceWaitIdle(deviceInfo.device))
     cleanup();
-    device.initialized_ = false;
-    device.cameraInitialized_ = false;
+    deviceInfo.initialized = false;
+    cameraInitialized = false;
   }
 
   void hwBufferToTexture(AHardwareBuffer *buffer) override;
@@ -69,7 +69,7 @@ protected:
   void onMvpUpdated() override;
 
   bool couldRender() const override {
-    return device.initialized_ && device.cameraInitialized_;
+    return deviceInfo.initialized && cameraInitialized;
   }
 
   void render() override {
@@ -110,75 +110,75 @@ private:
 
   ///////// Structs and variables
 
+  bool cameraInitialized;
+
   struct UniformBufferObject {
     glm::mat4 mvp;
   };
 
   struct VulkanDeviceInfo {
-    bool initialized_;
-    bool cameraInitialized_;
+    bool initialized;
 
-    VkInstance instance_;
-    VkPhysicalDevice gpuDevice_;
-    VkPhysicalDeviceMemoryProperties gpuMemoryProperties_;
-    VkDevice device_;
-    uint32_t queueFamilyIndex_;
+    VkInstance instance;
+    VkPhysicalDevice gpuDevice;
+    VkPhysicalDeviceMemoryProperties gpuMemoryProperties;
+    VkDevice device;
+    uint32_t queueFamilyIndex;
 
-    VkSurfaceKHR surface_;
-    VkQueue queue_;
+    VkSurfaceKHR surface;
+    VkQueue queue;
   };
-  VulkanDeviceInfo device;
+  VulkanDeviceInfo deviceInfo;
 
-  typedef struct VulkanSwapchainInfo {
-    VkSwapchainKHR swapchain_;
-    uint32_t swapchainLength_;
+  struct VulkanSwapchainInfo {
+    VkSwapchainKHR swapchain;
+    uint32_t swapchainLength;
 
-    VkExtent2D displaySize_;
-    VkFormat displayFormat_;
+    VkExtent2D displaySize;
+    VkFormat displayFormat;
 
     // array of frame buffers and views
-    VkFramebuffer* framebuffers_;
-    VkImage* displayImages_;
-    VkImageView* displayViews_;
-  } VulkanSwapchainInfo;
-  VulkanSwapchainInfo swapchain;
+    VkFramebuffer* framebuffers;
+    VkImage* displayImages;
+    VkImageView* displayViews;
+  };
+  VulkanSwapchainInfo swapchainInfo;
 
-  typedef struct VulkanExternalTextureInfo {
+  struct VulkanExternalTextureInfo {
     VkSampler sampler;
     VkImage image;
-    VkDeviceMemory mem;
+    VkDeviceMemory memory;
     VkImageView view;
-  } VulkanExternalTextureInfo;
-  static const VkFormat kTexFmt = VK_FORMAT_R8G8B8A8_UNORM;
-  struct VulkanExternalTextureInfo tex;
+  };
+  VulkanExternalTextureInfo externalTextureInfo;
 
-  struct VulkanBufferInfo {
+  struct VulkanBuffersInfo {
     VkBuffer vertexBuf;
     VkBuffer uniformBuf;
     VkDeviceMemory uniformBufferMemory;
     VkDeviceMemory vertexBufferMemory;
     void* uniformBufferMapped;
   };
-  VulkanBufferInfo buffers;
+  VulkanBuffersInfo buffersInfo;
 
-  typedef struct VulkanGfxPipelineInfo {
-    VkDescriptorSetLayout dscLayout_;
-    VkDescriptorPool descPool_;
-    VkDescriptorSet descSet_;
-    VkPipelineLayout layout_;
-    VkPipelineCache cache_;
-    VkPipeline pipeline_;
-    VkWriteDescriptorSet* descWrites_;
-  } VulkanGfxPipelineInfo;
-  VulkanGfxPipelineInfo gfxPipeline;
+  struct VulkanGfxPipelineInfo {
+    VkDescriptorSetLayout dscLayout;
+    VkDescriptorPool descPool;
+    VkDescriptorSet descSet;
+    VkPipelineLayout layout;
+    VkPipelineCache cache;
+    VkPipeline pipeline;
+    VkWriteDescriptorSet* descWrites;
+  };
+  VulkanGfxPipelineInfo gfxPipelineInfo;
 
   struct VulkanRenderInfo {
-    VkRenderPass renderPass_;
-    VkCommandPool cmdPool_;
-    VkCommandBuffer* cmdBuffer_;
-    uint32_t cmdBufferLen_;
-    VkSemaphore semaphore_;
-    VkFence fence_;
+    VkRenderPass renderPass;
+    VkCommandPool cmdPool;
+    VkCommandBuffer* cmdBuffer;
+    uint32_t cmdBufferLen;
+    VkSemaphore semaphore;
+    VkFence fence;
   };
   VulkanRenderInfo renderInfo;
 
@@ -206,13 +206,13 @@ private:
 
   ////// Destroy functions
 
-  void cleanupSwapChain();
+  void cleanupSwapChain() const;
 
   void cleanup();
 
   ////// Helper functions
 
-  void mapMemoryTypeToIndex(uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex);
+  void mapMemoryTypeToIndex(uint32_t typeBits, VkFlags requirements_mask, uint32_t* typeIndex) const;
 
   void createBuffer(VkDeviceSize size,
                     VkBufferUsageFlags usage,
@@ -220,17 +220,17 @@ private:
                     VkBuffer& buffer,
                     VkDeviceMemory& bufferMemory);
 
-  void setImageLayout(VkCommandBuffer cmdBuffer, VkImage image,
+  static void setImageLayout(VkCommandBuffer cmdBuffer, VkImage image,
                       VkImageLayout oldImageLayout, VkImageLayout newImageLayout,
                       VkPipelineStageFlags srcStages,
                       VkPipelineStageFlags destStages);
 
-  VkResult buildShaderFromFile(const char* shaderSource,
+  static VkResult buildShaderFromFile(const char* shaderSource,
                                VkShaderStageFlagBits type,
                                VkDevice vkDevice,
                                VkShaderModule* shaderOut);
 
-  shaderc_shader_kind getShadercShaderType(VkShaderStageFlagBits type);
+  static shaderc_shader_kind getShadercShaderType(VkShaderStageFlagBits type);
 
   ///////// Callbacks for AChoreographer and ALooper stored as private static functions
 

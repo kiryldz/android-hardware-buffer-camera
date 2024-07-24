@@ -17,10 +17,9 @@ Open the project in Android Studio, make sure NDK is installed and run.
 - Using OpenGL ES 3 for rendering and thus a bit more modern GLSL.
 
 ## Next steps / tasks
-
+- Investigate Android Camera to provide [Hardware Buffers](https://developer.android.com/reference/android/hardware/HardwareBuffer)s with `AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE` usage flag. For now I have to re-allocate buffers internally so that they could be used as Vulkan external memory.
 - Add support to take a photo by using [AHardwareBuffer_lock](https://developer.android.com/ndk/reference/group/a-hardware-buffer#ahardwarebuffer_lock) functionality and compare it with [glReadPixels](https://www.khronos.org/registry/OpenGL-Refpages/es3.0/html/glReadPixels.xhtml) approach.
 - Add support for back camera as well.
-- Implement Vulkan rendering backend and make use of [Android Hardware Buffers Vulkan extension](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_ANDROID_external_memory_android_hardware_buffer.html).
 - Gather some metrics to check [Hardware Buffers](https://developer.android.com/reference/android/hardware/HardwareBuffer) performance in comparison with more classic approaches.
 - Add support for `ImageAnalysis.Builder().setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)`
 
