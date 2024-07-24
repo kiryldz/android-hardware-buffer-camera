@@ -8,6 +8,8 @@
 
 #include "base_renderer.hpp"
 #include "opengl_renderer.hpp"
+#include "vulkan_renderer.hpp"
+
 #include "util.hpp"
 
 namespace engine {
@@ -52,13 +54,15 @@ public:
   void nativeSetSurface(JNIEnv &env, jni::Object <Surface> const &surface, jni::jint width,
                         jni::jint height);
 
-  void nativeFeedHardwareBuffer(JNIEnv &env, jni::Object <HardwareBuffer> const &buffer);
+  void nativeFeedHardwareBuffer(JNIEnv &env, jni::Object <HardwareBuffer> const &buffer, jni::jint rotationDegrees);
 
   void nativeDestroy(JNIEnv &env);
 
 private:
   ANativeWindow *aNativeWindow;
   std::unique_ptr <BaseRenderer> renderer;
+
+  AHardwareBuffer * gpuBuffer = nullptr;
 };
 
 } // namespace android

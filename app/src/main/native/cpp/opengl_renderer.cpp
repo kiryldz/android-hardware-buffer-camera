@@ -74,12 +74,6 @@ void OpenGLRenderer::doFrame(long, void *data) {
   auto *renderer = reinterpret_cast<engine::android::OpenGLRenderer *>(data);
   if (renderer->couldRender()) {
     renderer->render();
-    // perform the check if aHwBufferQueue is not empty - then we need to catch up
-    AHardwareBuffer *aHardwareBuffer;
-    if (renderer->aHwBufferQueue.try_pop(aHardwareBuffer)) {
-      LOGI("Catching up as some more buffers could be consumed!");
-      renderer->hwBufferToExternalTexture(aHardwareBuffer);
-    }
   }
 }
 
@@ -232,11 +226,7 @@ bool OpenGLRenderer::prepareEgl() {
        stringFromError(glGetError()),
        glGetString(GL_VERSION)
   );
-  // make sure that if we resume - buffer does not contain outdated frames so pop and release them
-  AHardwareBuffer *aHardwareBuffer;
-  while (aHwBufferQueue.try_pop(aHardwareBuffer)) {
-    AHardwareBuffer_release(aHardwareBuffer);
-  }
+  glClearColor(0.5, 0.5, 0.5, 0.5);
   eglPrepared = true;
   return true;
 }
@@ -284,17 +274,6 @@ void OpenGLRenderer::renderImpl() {
           (void *) (2 * sizeof(float))
   );
   glEnableVertexAttribArray(1);
-  // calculate MVP matrix only once
-  static const float viewportRatio =
-          static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
-  static const float ratio = viewportRatio * bufferImageRatio;
-  static auto proj = glm::frustum(-ratio, ratio, -1.f, 1.f, 3.f, 7.f);
-  static auto view = glm::lookAt(
-          glm::vec3(0.f, 0.f, 3.f),
-          glm::vec3(0.f, 0.f, 0.f),
-          glm::vec3(1.f, 0.f, 0.f)
-  );
-  static auto mvp = proj * view;
   glUniformMatrix4fv(uniformMvp, 1, GL_FALSE, glm::value_ptr(mvp));
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraExternalTex);
@@ -311,16 +290,14 @@ void OpenGLRenderer::renderImpl() {
   }
 }
 
-void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer *aHardwareBuffer) {
+void OpenGLRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
   // EGL could have already be destroyed beforehand
   if (!eglPrepared) {
-    AHardwareBuffer_release(aHardwareBuffer);
     return;
   }
   // first thing post another doFrame callback as we will need to render this texture
   AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
   static EGLint attrs[] = {EGL_NONE};
-  LOGI("Pop hardware buffer, size %u", aHwBufferQueue.unsafe_size());
   EGLImageKHR image = eglCreateImageKHR(
           eglDisplay,
           // a bit strange - at least Adreno 640 works OK only when EGL_NO_CONTEXT is passed...
@@ -328,17 +305,13 @@ void OpenGLRenderer::hwBufferToExternalTexture(AHardwareBuffer *aHardwareBuffer)
           // leaving EGL_NO_CONTEXT here
           EGL_NO_CONTEXT,
           EGL_NATIVE_BUFFER_ANDROID,
-          eglGetNativeClientBufferANDROID(aHardwareBuffer),
+          eglGetNativeClientBufferANDROID(buffer),
           attrs);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, cameraExternalTex);
   glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, image);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
   // interesting - works OK destroying it here, before actual rendering
   eglDestroyImageKHR(eglDisplay, image);
-  // still not precisely clear - if AHardwareBuffer is 'shared' memory -
-  // releasing it here should lead to missing texture data when drawing
-  // but it works as expected if we do release memory here, so OK
-  AHardwareBuffer_release(aHardwareBuffer);
   if (!hardwareBufferDescribed) {
     hardwareBufferDescribed = true;
   }

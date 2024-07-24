@@ -6,10 +6,6 @@
 // needed for glEGLImageTargetTexture2DOES
 #include <GLES2/gl2ext.h>
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
 #include "base_renderer.hpp"
 
 namespace engine {
@@ -27,7 +23,6 @@ protected:
     }
 
     void onWindowSizeUpdated(int width, int height) override {
-        glClearColor(0.5, 0.5, 0.5, 0.5);
         glViewport(0, 0, width, height);
     }
 
@@ -35,9 +30,7 @@ protected:
         destroyEgl();
     }
 
-    void hwBufferToTexture(AHardwareBuffer *buffer) override {
-        hwBufferToExternalTexture(buffer);
-    }
+    void hwBufferToTexture(AHardwareBuffer *buffer) override;
 
     bool couldRender() const override {
         return eglPrepared && viewportHeight > 0 && viewportHeight > 0;
@@ -112,12 +105,6 @@ private:
     void destroyEgl();
 
     void renderImpl();
-
-    /**
-     * Always called from render thread - converting hardware buffer to an OpenGL external texture.
-     * @param aHardwareBuffer
-     */
-    void hwBufferToExternalTexture(AHardwareBuffer *aHardwareBuffer);
 
     ///////// Callbacks for AChoreographer and ALooper stored as private static functions
 

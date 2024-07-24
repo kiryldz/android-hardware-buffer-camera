@@ -34,8 +34,8 @@ class CoreEngine(
         nativeSetSurface(null, 0 ,0)
     }
 
-    fun feedHardwareBuffer(buffer: HardwareBuffer) {
-        nativeFeedHardwareBuffer(buffer)
+    fun feedHardwareBuffer(buffer: HardwareBuffer, rotationDegrees: Int) {
+        nativeFeedHardwareBuffer(buffer, rotationDegrees)
     }
 
     fun destroy() {
@@ -49,7 +49,7 @@ class CoreEngine(
 
     private external fun nativeSetSurface(surface: Surface?, width: Int, height: Int)
 
-    private external fun nativeFeedHardwareBuffer(buffer: HardwareBuffer)
+    private external fun nativeFeedHardwareBuffer(buffer: HardwareBuffer, rotationDegrees: Int)
 
     private external fun nativeDestroy()
 

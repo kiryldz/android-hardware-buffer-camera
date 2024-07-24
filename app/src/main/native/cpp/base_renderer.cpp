@@ -31,12 +31,17 @@ void BaseRenderer::setWindow(ANativeWindow *window) {
 }
 
 void BaseRenderer::updateWindowSize(int width, int height) {
-  // schedule an event to the render thread
   renderThread->scheduleTask([this, width, height] {
-    viewportWidth = width;
-    viewportHeight = height;
-    LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
-    onWindowSizeUpdated(width, height);
+    // calculate MVP on CPU, if we would know it will be updated more often -
+    // of course better move matrix calculation to GPU
+    if (viewportWidth != width || viewportHeight != height) {
+      viewportWidth = width;
+      viewportHeight = height;
+      LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
+      onWindowSizeUpdated(width, height);
+    }
+    // update MVP in any case to cover the use-case of brining app to background and back
+    updateMvp();
   });
 }
 
@@ -55,25 +60,60 @@ void BaseRenderer::resetWindow() {
   LOGI("Android surface destroyed, resuming main thread!");
 }
 
-void BaseRenderer::feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer) {
-  if (!hardwareBufferDescribed) {
+void BaseRenderer::feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer, int rotationDegrees_) {
+  AHardwareBuffer_acquire(aHardwareBuffer);
+  LOGI("Buffer %p acquired" , aHardwareBuffer);
+  renderThread->scheduleTask([aHardwareBuffer, rotationDegrees_, this] {
     AHardwareBuffer_Desc description;
     AHardwareBuffer_describe(aHardwareBuffer, &description);
-    bufferImageRatio =
+    const auto bufferImageRatio_ =
             static_cast<float>(description.width) / static_cast<float>(description.height);
-  }
-  // it seems that there's no leak even if we do not explicitly acquire / release but guess better do that
-  AHardwareBuffer_acquire(aHardwareBuffer);
-  aHwBufferQueue.push(aHardwareBuffer);
-  //  LOGI("Feed new hardware buffer, size %u", aHwBufferQueue.unsafe_size());
-  renderThread->scheduleTask([this] {
-    AHardwareBuffer *aHardwareBuffer;
-    if (aHwBufferQueue.try_pop(aHardwareBuffer)) {
-      hwBufferToTexture(aHardwareBuffer);
-      // post choreographer callback as we will need to render this texture
-      postChoreographerCallback();
+    if (bufferImageRatio_ != bufferImageRatio) {
+      bufferImageRatio = bufferImageRatio_;
+      updateMvp();
     }
+    if (rotationDegrees_ != rotationDegrees) {
+      rotationDegrees = rotationDegrees_;
+      updateMvp();
+    }
+    bufferMutex.lock();
+    // transform HW buffer to Vulkan / OpenGL image / external texture.
+    hwBufferToTexture(aHardwareBuffer);
+    AHardwareBuffer_release(aHardwareBuffer);
+    LOGI("Buffer %p released" , aHardwareBuffer);
+    bufferMutex.unlock();
+    // post choreographer callback as we will need to render this texture
+    postChoreographerCallback();
   });
+}
+
+void BaseRenderer::updateMvp() {
+  float viewportRatio =
+          static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
+  float ratio = viewportRatio * bufferImageRatio;
+  float fov = 45.f;
+  auto proj = glm::perspective(glm::radians(fov), ratio, 0.1f, 100.0f);
+  if (strcmp(this->renderingModeName(), "Vulkan") == 0) {
+    // GLM was originally designed for OpenGL, where the Y coordinate of the clip coordinates is inverted.
+    // The easiest way to compensate for that is to flip the sign on the scaling factor of the Y axis in the projection matrix.
+    // If you don't do this, then the image will be rendered upside down.
+    proj[1][1] *= -1.f;
+  }
+  auto view = glm::lookAt(
+          // TODO make z = f(pov) and not hardcoded 3.f
+          glm::vec3(0.f, 0.f, 3.f),
+          glm::vec3(0.f, 0.f, 0.f),
+          // in majority of examples Y is expected to be 1.f but the actual image from camera is then flipped
+          // so using Y = -1.f
+          glm::vec3(0.f, -1.f, 0.f)
+  );
+  auto model = glm::rotate(
+          glm::mat4(1.0f),
+          glm::radians(static_cast<float>(rotationDegrees)),
+          glm::vec3(0.0f, 0.0f, 1.0f)
+          );
+  mvp = proj * view * model;
+  onMvpUpdated();
 }
 
 } // namespace android

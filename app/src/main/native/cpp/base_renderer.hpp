@@ -5,7 +5,10 @@
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 
-#include <tbb/concurrent_queue.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include "glm/gtx/string_cast.hpp"
 
 #include "looper_thread.hpp"
 #include "util.hpp"
@@ -30,7 +33,7 @@ public:
      * Always called from camera worker thread - feed new camera buffer.
      * @param aHardwareBuffer
      */
-    void feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer);
+    void feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer, int rotationDegrees_);
 
 protected:
     virtual const char *renderingModeName() = 0;
@@ -42,6 +45,8 @@ protected:
     virtual void onWindowSizeUpdated(int width, int height) = 0;
 
     virtual void hwBufferToTexture(AHardwareBuffer *buffer) = 0;
+
+    virtual void onMvpUpdated() { };
 
     virtual bool couldRender() const = 0;
 
@@ -56,15 +61,23 @@ protected:
 
     int viewportWidth = -1;
     int viewportHeight = -1;
-    volatile bool hardwareBufferDescribed = false;
-    float bufferImageRatio = 1.0f;
+    glm::mat4 mvp;
 
     /**
-     * Concurrent queue needed as worker camera thread produces buffers while render thread consumes them.
+     * The mutex needed as worker camera thread produces buffers while render thread consumes them.
      */
-    tbb::concurrent_queue<AHardwareBuffer *> aHwBufferQueue;
+    std::mutex bufferMutex;
 
 private:
+
+    /**
+     * Must be called from render thread only to avoid race conditions.
+     */
+    void updateMvp();
+
+    float bufferImageRatio = 1.0f;
+    int rotationDegrees = 0;
+
     std::unique_ptr <LooperThread> renderThread;
     std::mutex mutex;
     std::condition_variable initCondition;
