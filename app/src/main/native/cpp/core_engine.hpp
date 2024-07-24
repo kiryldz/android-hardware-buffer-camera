@@ -40,7 +40,7 @@ public:
             "initialize",
             "finalize",
             METHOD(&CoreEngine::nativeSetSurface, "nativeSetSurface"),
-            METHOD(&CoreEngine::nativeFeedHardwareBuffer, "nativeFeedHardwareBuffer"),
+            METHOD(&CoreEngine::nativeSendCameraFrame, "nativeSendCameraFrame"),
             METHOD(&CoreEngine::nativeDestroy, "nativeDestroy")
     );
   }
@@ -54,7 +54,7 @@ public:
   void nativeSetSurface(JNIEnv &env, jni::Object <Surface> const &surface, jni::jint width,
                         jni::jint height);
 
-  void nativeFeedHardwareBuffer(JNIEnv &env, jni::Object <HardwareBuffer> const &buffer, jni::jint rotationDegrees);
+  void nativeSendCameraFrame(JNIEnv &env, jni::Object <HardwareBuffer> const &buffer, jni::jint rotationDegrees, jni::jboolean backCamera);
 
   void nativeDestroy(JNIEnv &env);
 

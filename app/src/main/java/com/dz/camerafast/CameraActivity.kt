@@ -1,202 +1,220 @@
 package com.dz.camerafast
 
 import android.Manifest
-import android.annotation.SuppressLint
-import android.content.Context
-import android.content.pm.PackageManager
-import android.hardware.HardwareBuffer
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
-import android.view.Surface
-import android.view.SurfaceView
-import android.view.View
-import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.AspectRatio
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.resolutionselector.AspectRatioStrategy
-import androidx.camera.core.resolutionselector.ResolutionSelector
-import androidx.camera.core.resolutionselector.ResolutionStrategy
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import androidx.core.os.postDelayed
-import androidx.lifecycle.LifecycleOwner
-import java.util.concurrent.Executors
-import kotlin.experimental.and
-import kotlin.random.Random
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Button
+import androidx.compose.material.Text
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import androidx.core.content.PermissionChecker
 
-class CameraActivity : AppCompatActivity() {
+class CameraActivity : ComponentActivity() {
 
-    private val permissions = listOf(Manifest.permission.CAMERA)
-    private val permissionsRequestCode = Random.nextInt(0, 10000)
+    private lateinit var openGlCoreEngine: CoreEngine
+    private lateinit var vulkanCoreEngine: CoreEngine
+    private var startCamera = mutableStateOf(false)
 
-    private lateinit var coreEngineVulkan: CoreEngine
-    private lateinit var coreEngineOpenGL: CoreEngine
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        val vulkanView = findViewById<SurfaceView>(R.id.surface_view_vulkan)
-        val openGlView = findViewById<SurfaceView>(R.id.surface_view_opengl)
-        coreEngineVulkan = CoreEngine(
-            surfaceHolder = vulkanView.holder,
-            renderingMode = RenderingMode.VULKAN,
-        )
-        coreEngineOpenGL = CoreEngine(
-            surfaceHolder = openGlView.holder,
-            renderingMode = RenderingMode.OPEN_GL_ES,
-        )
-        vulkanView.setOnClickListener {
-            openGlView.visibility = View.GONE
-        }
-        openGlView.setOnClickListener {
-            vulkanView.visibility = View.GONE
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            startCamera.value = true
+        } else {
+            finish()
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        // Request permissions each time the app resumes, since they can be revoked at any time
-        if (!hasPermissions(this)) {
-            ActivityCompat.requestPermissions(
-                this, permissions.toTypedArray(), permissionsRequestCode
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        vulkanCoreEngine = CoreEngine(RenderingMode.VULKAN)
+        openGlCoreEngine = CoreEngine(RenderingMode.OPEN_GL_ES)
+        setContent {
+            var lensFacing by remember {
+                mutableIntStateOf(CameraSelector.LENS_FACING_FRONT)
+            }
+
+            var displayMode by remember {
+                mutableStateOf(DisplayMode.BOTH)
+            }
+
+            var vulkanWeightValue by remember {
+                mutableFloatStateOf(1.0f)
+            }
+
+            val vulkanWeight by animateFloatAsState(
+                targetValue = vulkanWeightValue,
+                // TODO increase duration and try make dynamic view resize less laggy
+                animationSpec = tween(durationMillis = 0),
+                label = "Vulkan",
+                finishedListener = { endValue ->
+                    displayMode = if (endValue == 1.0f) {
+                        DisplayMode.BOTH
+                    } else {
+                        DisplayMode.OPEN_GL_ES
+                    }
+                }
             )
-        } else {
-            bindCameraUseCases()
+
+            var openGlWeightValue by remember {
+                mutableFloatStateOf(1.0f)
+            }
+
+            val openGlWeight by animateFloatAsState(
+                targetValue = openGlWeightValue,
+                // TODO increase duration and try make dynamic view resize less laggy
+                animationSpec = tween(durationMillis = 0),
+                label = "OpenGL",
+                finishedListener = { endValue ->
+                    displayMode = if (endValue == 1.0f) {
+                        DisplayMode.BOTH
+                    } else {
+                        DisplayMode.VULKAN
+                    }
+                }
+            )
+
+            CameraX(
+                enabled = startCamera.value,
+                coreEngines = listOf(vulkanCoreEngine, openGlCoreEngine),
+                lensFacing = lensFacing
+            )
+
+            Column {
+                if (displayMode != DisplayMode.VULKAN) {
+                    Box(
+                        contentAlignment = Alignment.TopStart,
+                        modifier = Modifier
+                            .weight(openGlWeight)
+                            .fillMaxWidth()
+                    ) {
+                        CameraPreviewView(
+                            coreEngine = openGlCoreEngine,
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable(enabled = displayMode == DisplayMode.BOTH) {
+                                    vulkanWeightValue = 0.1f
+                                }
+                        )
+                        // TODO world mystery - this text is not shown
+                        if (displayMode == DisplayMode.BOTH) {
+                            Text(
+                                text = "OpenGL",
+                                fontSize = 30.sp,
+                                color = Color.Black,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                }
+                if (displayMode != DisplayMode.OPEN_GL_ES) {
+                    Box(
+                        contentAlignment = Alignment.TopStart,
+                        modifier = Modifier
+                            .weight(vulkanWeight)
+                            .fillMaxWidth()
+                    ) {
+                        CameraPreviewView(
+                            coreEngine = vulkanCoreEngine,
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable(enabled = displayMode == DisplayMode.BOTH) {
+                                    openGlWeightValue = 0.1f
+                                }
+                        )
+                        if (displayMode == DisplayMode.BOTH) {
+                            Text(
+                                text = "Vulkan",
+                                fontSize = 30.sp,
+                                color = Color.White,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                }
+                Row {
+                    Button(
+                        onClick = {
+                            lensFacing = if (lensFacing == CameraSelector.LENS_FACING_FRONT) {
+                                CameraSelector.LENS_FACING_BACK
+                            } else {
+                                CameraSelector.LENS_FACING_FRONT
+                            }
+                        },
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .weight(1.0f)
+                    ) {
+                        Text(text = "Switch camera")
+                    }
+                    if (displayMode != DisplayMode.BOTH) {
+                        Button(
+                            onClick = {
+                                displayMode = DisplayMode.BOTH
+                                vulkanWeightValue = 1.0f
+                                openGlWeightValue = 1.0f
+                            },
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .weight(1.0f)
+                        ) {
+                            Text(text = "Back to both")
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (PermissionChecker.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+            ) != PermissionChecker.PERMISSION_GRANTED
+        ) {
+            requestPermissionLauncher.launch(Manifest.permission.CAMERA)
+        } else {
+            startCamera.value = true
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        startCamera.value = false
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        coreEngineVulkan.destroy()
-        coreEngineOpenGL.destroy()
+        vulkanCoreEngine.destroy()
+        openGlCoreEngine.destroy()
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == permissionsRequestCode && hasPermissions(this)) {
-            bindCameraUseCases()
-        } else {
-            finish() // If we don't have the required permissions, we can't run
-        }
-    }
-
-    @SuppressLint("UnsafeOptInUsageError")
-    private fun bindCameraUseCases() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-
-            // Camera provider is now guaranteed to be available
-            val cameraProvider = cameraProviderFuture.get()
-
-            // Set up the image analysis use case which will process frames in real time using dedicated thread
-
-            // We step away from official guidelines and use STRATEGY_BLOCK_PRODUCER as at least
-            // on Xiaomi Mi 9 STRATEGY_KEEP_ONLY_LATEST strategy proved to be non-efficient -
-            // we're using concurrent HW buffer queue in core where camera worker thread feeds buffers ASAP
-            // while core render thread pop them ASAP providing best balance as in some situations vendor
-            // camera implementation may produce more in short period of time followed by some delay when
-            // we catch up by popping the queue when we have a moment between VSYNC calls
-            val imageAnalysis = ImageAnalysis.Builder()
-                .setResolutionSelector(
-                    ResolutionSelector.Builder()
-                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
-                        .build()
-                )
-                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_BLOCK_PRODUCER)
-                .setImageQueueDepth(CAMERA_IMAGE_QUEUE_DEPTH)
-                .build()
-
-            imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
-                Log.i(TAG, "New image arrived!")
-                imageProxy.image?.hardwareBuffer?.let { buffer ->
-                    buffer.printSupportedUsageFlags()
-                    coreEngineVulkan.feedHardwareBuffer(buffer, imageProxy.imageInfo.rotationDegrees)
-                    coreEngineOpenGL.feedHardwareBuffer(buffer, imageProxy.imageInfo.rotationDegrees)
-                    // from docs for `buffer.close()`:
-                    // Calling this method frees up any underlying native resources.
-                    //
-                    // This does not seem to be true as we acquire buffer in C++ and
-                    // release it on a render thread.
-                    buffer.close()
-                    Log.i(TAG, "Buffer closed!")
-                }
-                imageProxy.close()
-                Log.i(TAG, "Image closed!")
-            }
-
-            // Create a new camera selector each time, enforcing lens facing
-            val cameraSelector = CameraSelector.Builder()
-                .requireLensFacing(CameraSelector.LENS_FACING_FRONT)
-                .build()
-
-            // Apply declared configs to CameraX using the same lifecycle owner
-            cameraProvider.unbindAll()
-            // Note: we do not setup ANY preview options as all the drawing will be done by us
-            cameraProvider.bindToLifecycle(
-                this as LifecycleOwner, cameraSelector, imageAnalysis
-            )
-            Log.i(TAG, "Camera set up!")
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    /** Convenience method used to check if all permissions required by this app are granted */
-    private fun hasPermissions(context: Context) = permissions.all {
-        ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-    }
-
-    private fun HardwareBuffer.printSupportedUsageFlags() {
-        val usage = usage.toInt()
-        val supportedUsages = mutableListOf<String>()
-
-        if (usage and HardwareBuffer.USAGE_CPU_READ_RARELY.toInt() != 0) {
-            supportedUsages.add("USAGE_CPU_READ_RARELY")
-        }
-        if (usage and HardwareBuffer.USAGE_CPU_READ_OFTEN.toInt() != 0) {
-            supportedUsages.add("USAGE_CPU_READ_OFTEN")
-        }
-        if (usage and HardwareBuffer.USAGE_CPU_WRITE_RARELY.toInt() != 0) {
-            supportedUsages.add("USAGE_CPU_WRITE_RARELY")
-        }
-        if (usage and HardwareBuffer.USAGE_CPU_WRITE_OFTEN.toInt() != 0) {
-            supportedUsages.add("USAGE_CPU_WRITE_OFTEN")
-        }
-        if (usage and HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE.toInt() != 0) {
-            supportedUsages.add("USAGE_GPU_SAMPLED_IMAGE")
-        }
-        if (usage and HardwareBuffer.USAGE_GPU_COLOR_OUTPUT.toInt() != 0) {
-            supportedUsages.add("USAGE_GPU_COLOR_OUTPUT")
-        }
-        if (usage and HardwareBuffer.USAGE_GPU_CUBE_MAP.toInt() != 0) {
-            supportedUsages.add("USAGE_GPU_CUBE_MAP")
-        }
-        if (usage and HardwareBuffer.USAGE_GPU_MIPMAP_COMPLETE.toInt() != 0) {
-            supportedUsages.add("USAGE_GPU_MIPMAP_COMPLETE")
-        }
-        if (usage and HardwareBuffer.USAGE_PROTECTED_CONTENT.toInt() != 0) {
-            supportedUsages.add("USAGE_PROTECTED_CONTENT")
-        }
-        if (usage and HardwareBuffer.USAGE_SENSOR_DIRECT_DATA.toInt() != 0) {
-            supportedUsages.add("USAGE_SENSOR_DIRECT_DATA")
-        }
-        if (usage and HardwareBuffer.USAGE_VIDEO_ENCODE.toInt() != 0) {
-            supportedUsages.add("USAGE_VIDEO_ENCODE")
-        }
-
-        println("Supports ${supportedUsages.joinToString(", ")}")
-    }
-
-    private companion object {
-        private val TAG = "DzCamera"
-        // Not making buffer too big as it may bring in latency, 3 seems to be pretty balanced
-        private const val CAMERA_IMAGE_QUEUE_DEPTH = 3
+    internal companion object {
+        internal const val TAG = "DzCamera"
     }
 }
