@@ -16,7 +16,7 @@ Open the project in Android Studio, make sure NDK is installed and run.
 - Using [NDK Native Hardware Buffer](https://developer.android.com/ndk/reference/group/a-hardware-buffer) along with EGL and Vulkan extensions to work with HW buffers and convert them to an OpenGL ES external texture or Vulkan image backed by external memory.
 
 ## Next steps / tasks
-- Investigate Android Camera to provide [Hardware Buffers](https://developer.android.com/reference/android/hardware/HardwareBuffer)s with `AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE` usage flag. For now I have to re-allocate buffers internally so that they could be used as Vulkan external memory.
+- Investigate Android Camera to provide [Hardware Buffers](https://developer.android.com/reference/android/hardware/HardwareBuffer) with `AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE` usage flag. For now I have to re-allocate buffers internally so that they could be used as Vulkan external memory.
 - Add support to take a photo by using [AHardwareBuffer_lock](https://developer.android.com/ndk/reference/group/a-hardware-buffer#ahardwarebuffer_lock) functionality and compare it with [glReadPixels](https://www.khronos.org/registry/OpenGL-Refpages/es3.0/html/glReadPixels.xhtml) approach.
 - Add support for back camera as well.
 - Gather some metrics to check [Hardware Buffers](https://developer.android.com/reference/android/hardware/HardwareBuffer) performance in comparison with more classic approaches.
