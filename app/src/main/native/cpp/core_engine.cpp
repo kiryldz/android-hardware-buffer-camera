@@ -44,14 +44,13 @@ void CoreEngine::nativeSetSurface(JNIEnv &env, const jni::Object<Surface> &surfa
 }
 
 /** called from worker thread **/
-void CoreEngine::nativeFeedHardwareBuffer(JNIEnv &env,
-                                          const jni::Object<HardwareBuffer> &buffer,
-                                          jni::jint rotationDegrees) {
+void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBuffer> &buffer,
+                                       jni::jint rotationDegrees, jni::jboolean backCamera) {
   auto cameraBuffer = AHardwareBuffer_fromHardwareBuffer(&env, jni::Unwrap(*buffer.get()));
   AHardwareBuffer_Desc cameraBufferDescription;
   AHardwareBuffer_describe(cameraBuffer, &cameraBufferDescription);
   if (cameraBufferDescription.usage & AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE) {
-    renderer->feedHardwareBuffer(cameraBuffer, rotationDegrees);
+    renderer->processCameraFrame(cameraBuffer, rotationDegrees, backCamera);
   } else {
     AHardwareBuffer_Desc gpuBufferDescription {
             .width = cameraBufferDescription.width,
@@ -72,7 +71,7 @@ void CoreEngine::nativeFeedHardwareBuffer(JNIEnv &env,
     memcpy(gpuData, cpuData, cameraBufferDescription.height * cameraBufferDescription.width * 4);
     AHardwareBuffer_unlock(cameraBuffer, nullptr);
     AHardwareBuffer_unlock(gpuBuffer, nullptr);
-    renderer->feedHardwareBuffer(gpuBuffer, rotationDegrees);
+    renderer->processCameraFrame(gpuBuffer, rotationDegrees, backCamera);
   }
 }
 

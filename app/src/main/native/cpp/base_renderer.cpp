@@ -60,33 +60,6 @@ void BaseRenderer::resetWindow() {
   LOGI("Android surface destroyed, resuming main thread!");
 }
 
-void BaseRenderer::feedHardwareBuffer(AHardwareBuffer *aHardwareBuffer, int rotationDegrees_) {
-  AHardwareBuffer_acquire(aHardwareBuffer);
-  LOGI("Buffer %p acquired" , aHardwareBuffer);
-  renderThread->scheduleTask([aHardwareBuffer, rotationDegrees_, this] {
-    AHardwareBuffer_Desc description;
-    AHardwareBuffer_describe(aHardwareBuffer, &description);
-    const auto bufferImageRatio_ =
-            static_cast<float>(description.width) / static_cast<float>(description.height);
-    if (bufferImageRatio_ != bufferImageRatio) {
-      bufferImageRatio = bufferImageRatio_;
-      updateMvp();
-    }
-    if (rotationDegrees_ != rotationDegrees) {
-      rotationDegrees = rotationDegrees_;
-      updateMvp();
-    }
-    bufferMutex.lock();
-    // transform HW buffer to Vulkan / OpenGL image / external texture.
-    hwBufferToTexture(aHardwareBuffer);
-    AHardwareBuffer_release(aHardwareBuffer);
-    LOGI("Buffer %p released" , aHardwareBuffer);
-    bufferMutex.unlock();
-    // post choreographer callback as we will need to render this texture
-    postChoreographerCallback();
-  });
-}
-
 void BaseRenderer::updateMvp() {
   float viewportRatio =
           static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
@@ -98,6 +71,9 @@ void BaseRenderer::updateMvp() {
     // The easiest way to compensate for that is to flip the sign on the scaling factor of the Y axis in the projection matrix.
     // If you don't do this, then the image will be rendered upside down.
     proj[1][1] *= -1.f;
+  }
+  if (backCamera) {
+    proj[0][0] *= -1.f;
   }
   auto view = glm::lookAt(
           // TODO make z = f(pov) and not hardcoded 3.f
@@ -114,6 +90,38 @@ void BaseRenderer::updateMvp() {
           );
   mvp = proj * view * model;
   onMvpUpdated();
+}
+
+void BaseRenderer::processCameraFrame(AHardwareBuffer *aHardwareBuffer, int rotationDegrees_,
+                                      bool backCamera_) {
+  AHardwareBuffer_acquire(aHardwareBuffer);
+  LOGI("Buffer %p acquired by %s renderer" , aHardwareBuffer, this->renderingModeName());
+  renderThread->scheduleTask([aHardwareBuffer, rotationDegrees_, backCamera_, this] {
+    AHardwareBuffer_Desc description;
+    AHardwareBuffer_describe(aHardwareBuffer, &description);
+    const auto bufferImageRatio_ =
+            static_cast<float>(description.width) / static_cast<float>(description.height);
+    if (bufferImageRatio_ != bufferImageRatio) {
+      bufferImageRatio = bufferImageRatio_;
+      updateMvp();
+    }
+    if (rotationDegrees_ != rotationDegrees) {
+      rotationDegrees = rotationDegrees_;
+      updateMvp();
+    }
+    if (backCamera_ != backCamera) {
+      backCamera = backCamera_;
+      updateMvp();
+    }
+    bufferMutex.lock();
+    // transform HW buffer to Vulkan / OpenGL image / external texture.
+    hwBufferToTexture(aHardwareBuffer);
+    AHardwareBuffer_release(aHardwareBuffer);
+    LOGI("Buffer %p released by %s renderer" , aHardwareBuffer, this->renderingModeName());
+    bufferMutex.unlock();
+    // post choreographer callback as we will need to render this texture
+    postChoreographerCallback();
+  });
 }
 
 } // namespace android

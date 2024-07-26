@@ -1046,6 +1046,9 @@ void VulkanRenderer::recordCommandBuffer() {
 }
 
 void VulkanRenderer::onMvpUpdated() {
+  if (!deviceInfo.initialized) {
+    return;
+  }
   UniformBufferObject ubo{};
   ubo.mvp = mvp;
   memcpy(buffersInfo.uniformBufferMapped, &ubo, sizeof(ubo));
