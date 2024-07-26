@@ -2,7 +2,9 @@
 
 This repository showcases how to grab camera image stream and display the preview on the [SurfaceView](https://developer.android.com/reference/android/view/SurfaceView). Almost all the logic is written in C++.
 
-![showcase](https://github.com/user-attachments/assets/22061ca9-40e2-4783-a57a-1f1b52f77d9b)
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/22061ca9-40e2-4783-a57a-1f1b52f77d9b" alt="showcase" width="200"/>
+</p>
 
 ## Instructions and requirements
 
