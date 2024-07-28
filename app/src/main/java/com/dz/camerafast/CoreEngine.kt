@@ -9,7 +9,7 @@ import androidx.annotation.Keep
 
 @Keep
 class CoreEngine(
-    renderingMode: RenderingMode,
+    val renderingMode: RenderingMode,
 ) : SurfaceHolder.Callback {
 
     internal var surfaceHolder: SurfaceHolder? = null

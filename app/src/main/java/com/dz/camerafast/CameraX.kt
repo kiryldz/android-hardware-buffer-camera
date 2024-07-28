@@ -9,6 +9,7 @@ import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -19,15 +20,18 @@ import java.util.concurrent.Executors
 @OptIn(ExperimentalGetImage::class)
 @Composable
 fun CameraX(
-    enabled: Boolean,
     coreEngines: List<CoreEngine>,
     lensFacing: Int,
 ) {
     val context = LocalContext.current
-    LaunchedEffect(lensFacing, enabled) {
-        if (!enabled) {
-            return@LaunchedEffect
+
+    DisposableEffect(Unit) {
+        onDispose {
+            ProcessCameraProvider.getInstance(context).get()?.unbindAll()
         }
+    }
+
+    LaunchedEffect(lensFacing) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
 
