@@ -32,7 +32,7 @@ import androidx.core.content.PermissionChecker
 class CameraActivity : ComponentActivity() {
 
     private val previewEngineList = listOf(
-        CoreEngine(RenderingMode.VULKAN),
+//        CoreEngine(RenderingMode.VULKAN),
         CoreEngine(RenderingMode.OPEN_GL_ES)
     )
     private var previewCameraXState = mutableStateOf(false)
@@ -59,7 +59,7 @@ class CameraActivity : ComponentActivity() {
             }
 
             var displayMode by remember {
-                mutableStateOf(DisplayMode.BOTH)
+                mutableStateOf(DisplayMode.OPEN_GL_ES)
             }
 
             var vulkanWeightValue by remember {

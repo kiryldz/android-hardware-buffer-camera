@@ -32,7 +32,7 @@ fun Camera2(
 ) {
     val context = LocalContext.current
     val coroutineScopeMain = rememberCoroutineScope()
-    val pixelFormat = ImageFormat.YUV_420_888
+    val pixelFormat = ImageFormat.PRIVATE
 
     val cameraThread = HandlerThread("CameraThread").apply { start() }
     val cameraHandler = Handler(cameraThread.looper)
@@ -82,9 +82,7 @@ fun Camera2(
                 val image = it.acquireLatestImage()
                 Log.e(TAG, "Camera2: ${image.hashCode()}")
                 coreEngines.forEach { engine ->
-                    if (engine.renderingMode == RenderingMode.VULKAN) {
-                        engine.sendCameraFrame(image.hardwareBuffer!!, 270, false)
-                    }
+                    engine.sendCameraFrame(image.hardwareBuffer!!, 270, false)
                 }
                 image.close()
             },
