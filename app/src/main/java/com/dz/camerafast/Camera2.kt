@@ -42,8 +42,9 @@ fun Camera2(
     }
 
     LaunchedEffect(lensFacing) {
-        val cameraData = openCamera(cameraManager, lensFacing, coroutineScopeMain, cameraHandler)!!
-        val size = cameraData.second.get(
+        val (cameraDevice, cameraCharacteristics) =
+            openCamera(cameraManager, lensFacing, coroutineScopeMain, cameraHandler)
+        val size = cameraCharacteristics.get(
             CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP
         )!!
             .getOutputSizes(pixelFormat).maxByOrNull { it.height * it.width }!!
@@ -55,7 +56,7 @@ fun Camera2(
             HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE
         )
         val cameraCaptureSession = suspendCancellableCoroutine {
-            cameraData.first.createCaptureSession(
+            cameraDevice.createCaptureSession(
                 listOf(imageReader.surface),
                 object : StateCallback() {
                     override fun onConfigured(p0: CameraCaptureSession) {
@@ -63,16 +64,16 @@ fun Camera2(
                     }
 
                     override fun onConfigureFailed(p0: CameraCaptureSession) {
-                        Log.e(TAG, "onConfigureFailed")
-                        it.resume(null)
+                        it.cancel(RuntimeException("createCaptureSession: onConfigureFailed"))
                     }
                 },
                 cameraHandler
             )
         }
-        cameraCaptureSession?.setRepeatingRequest(
-            cameraData.first
-                .createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply { addTarget(imageReader.surface) }
+        cameraCaptureSession.setRepeatingRequest(
+            cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                    addTarget(imageReader.surface)
+                }
                 .build(),
             null,
             cameraHandler
@@ -81,8 +82,11 @@ fun Camera2(
             {
                 val image = it.acquireLatestImage()
                 Log.e(TAG, "Camera2: ${image.hashCode()}")
-                coreEngines.forEach { engine ->
-                    engine.sendCameraFrame(image.hardwareBuffer!!, 270, false)
+                image.hardwareBuffer?.let { buffer ->
+                    coreEngines.forEach { engine ->
+                        engine.sendCameraFrame(buffer, 270, false)
+                    }
+                    buffer.close()
                 }
                 image.close()
             },
@@ -97,7 +101,7 @@ private suspend fun openCamera(
     lensFacing: Int,
     coroutineScope: CoroutineScope,
     handler: Handler,
-): Pair<CameraDevice, CameraCharacteristics>? = withContext(coroutineScope.coroutineContext) {
+): Pair<CameraDevice, CameraCharacteristics> = withContext(coroutineScope.coroutineContext) {
     cameraManager.cameraIdList.forEach { cameraId ->
         val characteristics = cameraManager.getCameraCharacteristics(cameraId)
         if (characteristics.get(CameraCharacteristics.LENS_FACING) == lensFacing) {
@@ -107,8 +111,7 @@ private suspend fun openCamera(
                         it.resume(device to characteristics)
 
                     override fun onDisconnected(device: CameraDevice) {
-                        Log.w(TAG, "Camera $cameraId has been disconnected")
-                        it.resume(null)
+                        it.cancel(RuntimeException("Camera $cameraId has been disconnected"))
                     }
 
                     override fun onError(device: CameraDevice, error: Int) {
@@ -120,15 +123,13 @@ private suspend fun openCamera(
                             ERROR_MAX_CAMERAS_IN_USE -> "Maximum cameras in use"
                             else -> "Unknown"
                         }
-                        val exc = RuntimeException("Camera $cameraId error: ($error) $msg")
-                        Log.e(TAG, exc.message, exc)
-                        it.resume(null)
+                        it.cancel(RuntimeException("Camera $cameraId error: ($error) $msg"))
                     }
                 }, handler)
             }
         }
     }
-    return@withContext null
+    throw RuntimeException("Camera with $lensFacing was not found on device")
 }
 
 private const val TAG = "DzCamera2"
