@@ -84,6 +84,7 @@ fun Camera2(
                 Log.e(TAG, "Camera2: ${image.hashCode()}")
                 image.hardwareBuffer?.let { buffer ->
                     coreEngines.forEach { engine ->
+                        // TODO support parameters
                         engine.sendCameraFrame(buffer, 270, false)
                     }
                     buffer.close()
