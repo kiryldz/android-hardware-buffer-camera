@@ -73,6 +73,7 @@ fun CameraX(
         }, ContextCompat.getMainExecutor(context))
 
         onStopOrDispose {
+            cameraProviderFuture.cancel(true)
             ProcessCameraProvider.getInstance(context).get()?.unbindAll()
         }
     }
