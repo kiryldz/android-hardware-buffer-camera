@@ -15,11 +15,18 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.camera.core.CameraSelector
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LifecycleStartEffect
+import com.dz.camerafast.CameraActivity.Companion.TAG
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
@@ -41,58 +48,93 @@ fun Camera2(
         context.applicationContext.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     }
 
-    LaunchedEffect(lensFacing) {
-        val (cameraDevice, cameraCharacteristics) =
-            openCamera(cameraManager, lensFacing, coroutineScopeMain, cameraHandler)
-        val size = cameraCharacteristics.get(
-            CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP
-        )!!
-            .getOutputSizes(pixelFormat).maxByOrNull { it.height * it.width }!!
-        val imageReader = ImageReader.newInstance(
-            size.width,
-            size.height,
-            pixelFormat,
-            IMAGE_BUFFER_SIZE,
-            HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE
-        )
-        val cameraCaptureSession = suspendCancellableCoroutine {
-            cameraDevice.createCaptureSession(
-                listOf(imageReader.surface),
-                object : StateCallback() {
-                    override fun onConfigured(p0: CameraCaptureSession) {
-                        it.resume(p0)
-                    }
+    var currentCameraDevice: CameraDevice? by remember {
+        mutableStateOf(null)
+    }
+    var currentImageReader: ImageReader? by remember {
+        mutableStateOf(null)
+    }
+    var currentCameraCaptureSession: CameraCaptureSession? by remember {
+        mutableStateOf(null)
+    }
 
-                    override fun onConfigureFailed(p0: CameraCaptureSession) {
-                        it.cancel(RuntimeException("createCaptureSession: onConfigureFailed"))
+    fun closeCamera() {
+        currentImageReader?.close()
+        currentCameraCaptureSession?.stopRepeating()
+        currentCameraCaptureSession?.close()
+        currentCameraDevice?.close()
+    }
+
+    LifecycleStartEffect(lensFacing) {
+        val job = coroutineScopeMain.launch {
+            val (cameraDevice, cameraCharacteristics) =
+                openCamera(cameraManager, lensFacing, coroutineScopeMain, cameraHandler)
+            currentCameraDevice = cameraDevice
+            val size = cameraCharacteristics.get(
+                CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP
+            )!!
+                .getOutputSizes(pixelFormat).maxByOrNull { it.height * it.width }!!
+            val imageReader = ImageReader.newInstance(
+                size.width,
+                size.height,
+                pixelFormat,
+                3,
+                // this is crucially important as allows to render camera frame without extra copy operations
+                HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE
+            ).also {
+                currentImageReader = it
+            }
+            val cameraCaptureSession = suspendCancellableCoroutine {
+                cameraDevice.createCaptureSession(
+                    listOf(imageReader.surface),
+                    object : StateCallback() {
+                        override fun onConfigured(p0: CameraCaptureSession) {
+                            it.resume(p0)
+                        }
+
+                        override fun onConfigureFailed(p0: CameraCaptureSession) {
+                            it.cancel(RuntimeException("createCaptureSession: onConfigureFailed"))
+                        }
+                    },
+                    cameraHandler
+                )
+            }.also {
+                currentCameraCaptureSession = it
+            }
+            cameraCaptureSession.setRepeatingRequest(
+                cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                    addTarget(imageReader.surface)
+                }
+                    .build(),
+                null,
+                cameraHandler
+            )
+            val rotationDegrees = cameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)!!
+            imageReader.setOnImageAvailableListener(
+                {
+                    val image = it.acquireLatestImage()
+                    image.hardwareBuffer?.let { buffer ->
+                        coreEngines.forEach { engine ->
+                            engine.sendCameraFrame(
+                                buffer = buffer,
+                                rotationDegrees = rotationDegrees,
+                                backCamera = lensFacing == CameraSelector.LENS_FACING_BACK
+                            )
+                        }
+                        buffer.close()
                     }
+                    image.close()
                 },
                 cameraHandler
             )
         }
-        cameraCaptureSession.setRepeatingRequest(
-            cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                    addTarget(imageReader.surface)
-                }
-                .build(),
-            null,
-            cameraHandler
-        )
-        imageReader.setOnImageAvailableListener(
-            {
-                val image = it.acquireLatestImage()
-                Log.e(TAG, "Camera2: ${image.hashCode()}")
-                image.hardwareBuffer?.let { buffer ->
-                    coreEngines.forEach { engine ->
-                        // TODO support parameters
-                        engine.sendCameraFrame(buffer, 270, false)
-                    }
-                    buffer.close()
-                }
-                image.close()
-            },
-            cameraHandler
-        )
+
+        onStopOrDispose {
+            if (job.isActive) {
+                job.cancel()
+            }
+            closeCamera()
+        }
     }
 }
 
@@ -109,7 +151,9 @@ private suspend fun openCamera(
             return@withContext suspendCancellableCoroutine {
                 cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
                     override fun onOpened(device: CameraDevice) =
-                        it.resume(device to characteristics)
+                        it.resume(device to characteristics).also {
+                            Log.i(TAG, "Camera2 opened, lens = $lensFacing")
+                        }
 
                     override fun onDisconnected(device: CameraDevice) {
                         it.cancel(RuntimeException("Camera $cameraId has been disconnected"))
@@ -132,8 +176,3 @@ private suspend fun openCamera(
     }
     throw RuntimeException("Camera with $lensFacing was not found on device")
 }
-
-private const val TAG = "DzCamera2"
-
-/** Maximum number of images that will be held in the reader's buffer */
-private const val IMAGE_BUFFER_SIZE: Int = 3

@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LifecycleStartEffect
 import com.dz.camerafast.CameraActivity.Companion.TAG
 import java.util.concurrent.Executors
 
@@ -25,16 +26,9 @@ fun CameraX(
 ) {
     val context = LocalContext.current
 
-    DisposableEffect(Unit) {
-        onDispose {
-            ProcessCameraProvider.getInstance(context).get()?.unbindAll()
-        }
-    }
-
-    LaunchedEffect(lensFacing) {
+    LifecycleStartEffect(lensFacing) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
-
             // Camera provider is now guaranteed to be available
             val cameraProvider = cameraProviderFuture.get()
 
@@ -77,5 +71,9 @@ fun CameraX(
             )
             Log.i(TAG, "Camera set up!")
         }, ContextCompat.getMainExecutor(context))
+
+        onStopOrDispose {
+            ProcessCameraProvider.getInstance(context).get()?.unbindAll()
+        }
     }
 }

@@ -11,6 +11,7 @@ import androidx.camera.core.CameraSelector
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -141,9 +142,11 @@ class CameraActivity : ComponentActivity() {
                 Column {
                     Text(
                         text = cameraMode.name,
+                        color = Color.White,
                         textAlign = TextAlign.Center,
                         fontSize = 30.sp,
                         modifier = Modifier
+                            .background(Color.DarkGray)
                             .fillMaxWidth()
                             .padding(10.dp)
                     )
@@ -242,15 +245,7 @@ class CameraActivity : ComponentActivity() {
             ) != PermissionChecker.PERMISSION_GRANTED
         ) {
             requestPermissionLauncher.launch(Manifest.permission.CAMERA)
-        } else {
-            // TODO open last closed camera
-            cameraModeState.value = CameraMode.CAMERA_X
         }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        cameraModeState.value = CameraMode.NONE
     }
 
     override fun onDestroy() {
