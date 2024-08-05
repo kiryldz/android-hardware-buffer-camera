@@ -28,7 +28,6 @@ import com.dz.camerafast.CameraActivity.Companion.TAG
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
 @RequiresApi(Build.VERSION_CODES.Q)
@@ -36,9 +35,9 @@ import kotlin.coroutines.resume
 fun Camera2(
     coreEngines: List<CoreEngine>,
     lensFacing: Int,
+    context: Context = LocalContext.current,
+    coroutineScope: CoroutineScope = rememberCoroutineScope()
 ) {
-    val context = LocalContext.current
-    val coroutineScopeMain = rememberCoroutineScope()
     val pixelFormat = ImageFormat.PRIVATE
 
     val cameraThread = HandlerThread("CameraThread").apply { start() }
@@ -66,9 +65,9 @@ fun Camera2(
     }
 
     LifecycleStartEffect(lensFacing) {
-        val job = coroutineScopeMain.launch {
+        val job = coroutineScope.launch {
             val (cameraDevice, cameraCharacteristics) =
-                openCamera(cameraManager, lensFacing, coroutineScopeMain, cameraHandler)
+                openCamera(cameraManager, lensFacing, cameraHandler)
             currentCameraDevice = cameraDevice
             val size = cameraCharacteristics.get(
                 CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP
@@ -102,14 +101,16 @@ fun Camera2(
                 currentCameraCaptureSession = it
             }
             cameraCaptureSession.setRepeatingRequest(
-                cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                    addTarget(imageReader.surface)
-                }
+                cameraDevice
+                    .createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                        addTarget(imageReader.surface)
+                    }
                     .build(),
                 null,
                 cameraHandler
             )
-            val rotationDegrees = cameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)!!
+            val rotationDegrees =
+                cameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)!!
             imageReader.setOnImageAvailableListener(
                 {
                     val image = it.acquireLatestImage()
@@ -142,13 +143,12 @@ fun Camera2(
 private suspend fun openCamera(
     cameraManager: CameraManager,
     lensFacing: Int,
-    coroutineScope: CoroutineScope,
     handler: Handler,
-): Pair<CameraDevice, CameraCharacteristics> = withContext(coroutineScope.coroutineContext) {
+): Pair<CameraDevice, CameraCharacteristics> {
     cameraManager.cameraIdList.forEach { cameraId ->
         val characteristics = cameraManager.getCameraCharacteristics(cameraId)
         if (characteristics.get(CameraCharacteristics.LENS_FACING) == lensFacing) {
-            return@withContext suspendCancellableCoroutine {
+            return suspendCancellableCoroutine {
                 cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
                     override fun onOpened(device: CameraDevice) =
                         it.resume(device to characteristics).also {

@@ -1,5 +1,6 @@
 package com.dz.camerafast
 
+import android.content.Context
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.camera.core.CameraSelector
@@ -23,9 +24,8 @@ import java.util.concurrent.Executors
 fun CameraX(
     coreEngines: List<CoreEngine>,
     lensFacing: Int,
+    context: Context = LocalContext.current
 ) {
-    val context = LocalContext.current
-
     LifecycleStartEffect(lensFacing) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
