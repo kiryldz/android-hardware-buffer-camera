@@ -1,5 +1,6 @@
 package com.dz.camerafast
 
+import android.content.Context
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.camera.core.CameraSelector
@@ -9,28 +10,25 @@ import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LifecycleStartEffect
 import com.dz.camerafast.CameraActivity.Companion.TAG
 import java.util.concurrent.Executors
 
 @OptIn(ExperimentalGetImage::class)
 @Composable
 fun CameraX(
-    enabled: Boolean,
     coreEngines: List<CoreEngine>,
     lensFacing: Int,
+    context: Context = LocalContext.current
 ) {
-    val context = LocalContext.current
-    LaunchedEffect(lensFacing, enabled) {
-        if (!enabled) {
-            return@LaunchedEffect
-        }
+    LifecycleStartEffect(lensFacing) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
-
             // Camera provider is now guaranteed to be available
             val cameraProvider = cameraProviderFuture.get()
 
@@ -73,5 +71,10 @@ fun CameraX(
             )
             Log.i(TAG, "Camera set up!")
         }, ContextCompat.getMainExecutor(context))
+
+        onStopOrDispose {
+            cameraProviderFuture.cancel(true)
+            ProcessCameraProvider.getInstance(context).get()?.unbindAll()
+        }
     }
 }
