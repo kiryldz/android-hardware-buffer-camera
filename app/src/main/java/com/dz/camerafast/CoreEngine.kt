@@ -9,11 +9,13 @@ import androidx.annotation.Keep
 
 @Keep
 class CoreEngine(
-    renderingMode: RenderingMode,
+    val renderingMode: RenderingMode,
 ) : SurfaceHolder.Callback {
 
     internal var surfaceHolder: SurfaceHolder? = null
         set(value) {
+            // remove callback for previous camera preview view if needed
+            field?.removeCallback(this)
             field = value
             // we will use RGBA_8888 here and use same config in render thread
             field?.setFormat(PixelFormat.RGBA_8888)
