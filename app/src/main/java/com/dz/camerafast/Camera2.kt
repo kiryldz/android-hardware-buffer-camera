@@ -58,6 +58,7 @@ fun Camera2(
     }
 
     fun closeCamera() {
+        Log.i(TAG, "Camera2 closed, lens = $lensFacing")
         currentImageReader?.close()
         currentCameraCaptureSession?.stopRepeating()
         currentCameraCaptureSession?.close()

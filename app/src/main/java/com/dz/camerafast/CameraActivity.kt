@@ -18,18 +18,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.Button
 import androidx.compose.material.Text
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,11 +34,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.PermissionChecker
 
-@OptIn(ExperimentalFoundationApi::class)
 class CameraActivity : ComponentActivity() {
 
     private val previewEngineList = listOf(
-//        CoreEngine(RenderingMode.VULKAN),
+        CoreEngine(RenderingMode.VULKAN),
         CoreEngine(RenderingMode.OPEN_GL_ES)
     )
     private var cameraModeState = mutableStateOf(CameraMode.NONE)
@@ -70,7 +65,7 @@ class CameraActivity : ComponentActivity() {
             }
 
             var displayMode by remember {
-                mutableStateOf(DisplayMode.OPEN_GL_ES)
+                mutableStateOf(DisplayMode.BOTH)
             }
 
             var vulkanWeightValue by remember {
@@ -109,12 +104,6 @@ class CameraActivity : ComponentActivity() {
                 }
             )
 
-            val pagerState = rememberPagerState(
-                pageCount = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) 2 else 1
-                }
-            )
-
             if (cameraMode == CameraMode.CAMERA_X) {
                 CameraX(
                     coreEngines = previewEngineList,
@@ -123,85 +112,72 @@ class CameraActivity : ComponentActivity() {
             }
 
             if (cameraMode == CameraMode.CAMERA_2) {
+                // Vulkan is not supported yet
+                displayMode = DisplayMode.OPEN_GL_ES
                 Camera2(
                     coreEngines = previewEngineList,
                     lensFacing = lensFacing
                 )
             }
 
-            LaunchedEffect(pagerState) {
-                snapshotFlow { pagerState.currentPage }.collect { page ->
-                    when (page) {
-                        0 -> cameraModeState.value = CameraMode.CAMERA_X
-                        1 -> cameraModeState.value = CameraMode.CAMERA_2
+            Column {
+                Text(
+                    text = cameraMode.name,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    fontSize = 30.sp,
+                    modifier = Modifier
+                        .background(Color.DarkGray)
+                        .fillMaxWidth()
+                        .padding(10.dp)
+                )
+                if (displayMode != DisplayMode.VULKAN) {
+                    Box(
+                        contentAlignment = Alignment.TopStart,
+                        modifier = Modifier
+                            .weight(openGlWeight)
+                            .fillMaxWidth()
+                    ) {
+                        CameraPreviewView(
+                            coreEngine = previewEngineList.find { it.renderingMode == RenderingMode.OPEN_GL_ES }!!,
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable(enabled = displayMode == DisplayMode.BOTH) {
+                                    vulkanWeightValue = 0.1f
+                                }
+                        )
+                        Text(
+                            text = "OpenGL",
+                            fontSize = 20.sp,
+                            color = Color.Black,
+                            modifier = Modifier.padding(8.dp)
+                        )
                     }
                 }
-            }
-
-            HorizontalPager(state = pagerState) {
-                Column {
-                    Text(
-                        text = cameraMode.name,
-                        color = Color.White,
-                        textAlign = TextAlign.Center,
-                        fontSize = 30.sp,
+                if (displayMode != DisplayMode.OPEN_GL_ES) {
+                    Box(
+                        contentAlignment = Alignment.TopStart,
                         modifier = Modifier
-                            .background(Color.DarkGray)
+                            .weight(vulkanWeight)
                             .fillMaxWidth()
-                            .padding(10.dp)
-                    )
-                    if (displayMode != DisplayMode.VULKAN) {
-                        Box(
-                            contentAlignment = Alignment.TopStart,
+                    ) {
+                        CameraPreviewView(
+                            coreEngine = previewEngineList.find { it.renderingMode == RenderingMode.VULKAN }!!,
                             modifier = Modifier
-                                .weight(openGlWeight)
-                                .fillMaxWidth()
-                        ) {
-                            CameraPreviewView(
-                                coreEngine = previewEngineList.find { it.renderingMode == RenderingMode.OPEN_GL_ES }!!,
-                                modifier = Modifier
-                                    .matchParentSize()
-                                    .clickable(enabled = displayMode == DisplayMode.BOTH) {
-                                        vulkanWeightValue = 0.1f
-                                    }
-                            )
-                            // TODO world mystery - this text is not shown
-                            //  reproduces on Xiaomi only
-                            if (displayMode == DisplayMode.BOTH) {
-                                Text(
-                                    text = "OpenGL",
-                                    fontSize = 20.sp,
-                                    color = Color.Black,
-                                    modifier = Modifier.padding(8.dp)
-                                )
-                            }
-                        }
+                                .matchParentSize()
+                                .clickable(enabled = displayMode == DisplayMode.BOTH) {
+                                    openGlWeightValue = 0.1f
+                                }
+                        )
+                        Text(
+                            text = "Vulkan",
+                            fontSize = 20.sp,
+                            color = Color.White,
+                            modifier = Modifier.padding(8.dp)
+                        )
                     }
-                    if (displayMode != DisplayMode.OPEN_GL_ES) {
-                        Box(
-                            contentAlignment = Alignment.TopStart,
-                            modifier = Modifier
-                                .weight(vulkanWeight)
-                                .fillMaxWidth()
-                        ) {
-                            CameraPreviewView(
-                                coreEngine = previewEngineList.find { it.renderingMode == RenderingMode.VULKAN }!!,
-                                modifier = Modifier
-                                    .matchParentSize()
-                                    .clickable(enabled = displayMode == DisplayMode.BOTH) {
-                                        openGlWeightValue = 0.1f
-                                    }
-                            )
-                            if (displayMode == DisplayMode.BOTH) {
-                                Text(
-                                    text = "Vulkan",
-                                    fontSize = 20.sp,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(8.dp)
-                                )
-                            }
-                        }
-                    }
+                }
+                if (cameraMode != CameraMode.NONE) {
                     Row {
                         Button(
                             onClick = {
@@ -217,7 +193,23 @@ class CameraActivity : ComponentActivity() {
                         ) {
                             Text(text = "Switch camera")
                         }
-                        if (displayMode != DisplayMode.BOTH) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            Button(
+                                onClick = {
+                                    if (cameraMode == CameraMode.CAMERA_X) {
+                                        cameraModeState.value = CameraMode.CAMERA_2
+                                    } else {
+                                        cameraModeState.value = CameraMode.CAMERA_X
+                                    }
+                                },
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .weight(1.0f)
+                            ) {
+                                Text(text = "To ${if (cameraMode == CameraMode.CAMERA_X) "Camera2" else "CameraX"}")
+                            }
+                        }
+                        if (displayMode != DisplayMode.BOTH && cameraMode != CameraMode.CAMERA_2) {
                             Button(
                                 onClick = {
                                     displayMode = DisplayMode.BOTH
@@ -237,14 +229,16 @@ class CameraActivity : ComponentActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
+    override fun onResume() {
+        super.onResume()
         if (PermissionChecker.checkSelfPermission(
                 this,
                 Manifest.permission.CAMERA
             ) != PermissionChecker.PERMISSION_GRANTED
         ) {
             requestPermissionLauncher.launch(Manifest.permission.CAMERA)
+        } else {
+            cameraModeState.value = CameraMode.CAMERA_X
         }
     }
 
