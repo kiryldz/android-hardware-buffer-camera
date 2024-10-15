@@ -1,4 +1,4 @@
-package com.dz.camerafast
+package com.dz.camerafast.camera
 
 import android.content.Context
 import android.util.Log
@@ -15,12 +15,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LifecycleStartEffect
 import com.dz.camerafast.CameraActivity.Companion.TAG
+import com.dz.camerafast.RenderingEngine
 import java.util.concurrent.Executors
 
 @OptIn(ExperimentalGetImage::class)
 @Composable
 fun CameraX(
-  coreEngines: List<CoreEngine>,
+  renderingEngines: List<RenderingEngine>,
   lensFacing: Int,
   context: Context = LocalContext.current
 ) {
@@ -44,7 +45,7 @@ fun CameraX(
       imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
         Log.i(TAG, "New image ${imageProxy.hashCode()} arrived!")
         imageProxy.image?.hardwareBuffer?.let { buffer ->
-          coreEngines.forEach {
+          renderingEngines.forEach {
             it.sendCameraFrame(
               buffer = buffer,
               rotationDegrees = imageProxy.imageInfo.rotationDegrees,

@@ -8,8 +8,8 @@ import android.view.SurfaceHolder
 import androidx.annotation.Keep
 
 @Keep
-class CoreEngine(
-  val renderingMode: RenderingMode,
+class RenderingEngine(
+  val mode: RenderingMode,
 ) : SurfaceHolder.Callback {
 
   internal var surfaceHolder: SurfaceHolder? = null
@@ -23,7 +23,7 @@ class CoreEngine(
     }
 
   init {
-    initialize(renderingMode.ordinal)
+    initialize(mode.ordinal)
   }
 
   fun sendCameraFrame(buffer: HardwareBuffer, rotationDegrees: Int, backCamera: Boolean) {

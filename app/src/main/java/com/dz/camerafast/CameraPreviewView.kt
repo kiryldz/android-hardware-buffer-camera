@@ -9,13 +9,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 @SuppressLint("UnsafeOptInUsageError")
 @Composable
 fun CameraPreviewView(
-  coreEngine: CoreEngine,
+  renderingEngine: RenderingEngine,
   modifier: Modifier = Modifier
 ) {
   AndroidView(
     modifier = modifier,
     factory = { context ->
-      SurfaceView(context).apply { coreEngine.surfaceHolder = this.holder }
+      SurfaceView(context).apply { renderingEngine.surfaceHolder = this.holder }
     },
     update = {
       // could not be used efficiently as this will always be called from main thread

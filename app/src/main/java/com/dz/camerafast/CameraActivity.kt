@@ -2,7 +2,6 @@ package com.dz.camerafast
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,42 +9,31 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.Button
-import androidx.compose.material.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.PermissionChecker
+import com.dz.camerafast.camera.Camera2
+import com.dz.camerafast.camera.CameraData
+import com.dz.camerafast.camera.CameraX
 
 class CameraActivity : ComponentActivity() {
 
-  private val previewEngineList = listOf(
-    CoreEngine(RenderingMode.VULKAN),
-    CoreEngine(RenderingMode.OPEN_GL_ES)
-  )
-  private var cameraModeState = mutableStateOf(CameraMode.NONE)
+  private val vulkanRenderingEngine = RenderingEngine(RenderingMode.VULKAN)
+  private val openGlRenderingEngine = RenderingEngine(RenderingMode.OPEN_GL_ES)
+  private var initialCameraMode = CameraMode.NONE
 
   private val requestPermissionLauncher = registerForActivityResult(
     ActivityResultContracts.RequestPermission()
   ) { isGranted ->
     if (isGranted) {
-      cameraModeState.value = CameraMode.CAMERA_X
+      initialCameraMode = CameraMode.CAMERA_X
     } else {
       finish()
     }
@@ -55,16 +43,20 @@ class CameraActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
-      val cameraMode by remember {
-        cameraModeState
+      val enginesCamera2 = remember {
+        mutableStateListOf(vulkanRenderingEngine, openGlRenderingEngine)
       }
 
-      var lensFacing by remember {
-        mutableIntStateOf(CameraSelector.LENS_FACING_FRONT)
+      val enginesCameraX = remember {
+        mutableStateListOf(vulkanRenderingEngine, openGlRenderingEngine)
       }
 
-      var displayMode by remember {
-        mutableStateOf(DisplayMode.BOTH)
+      var vulkanCameraData by remember {
+        mutableStateOf(CameraData(initialCameraMode, CameraSelector.LENS_FACING_FRONT))
+      }
+
+      var openGlCameraData by remember {
+        mutableStateOf(CameraData(initialCameraMode, CameraSelector.LENS_FACING_FRONT))
       }
 
       var vulkanWeightValue by remember {
@@ -76,13 +68,6 @@ class CameraActivity : ComponentActivity() {
         // TODO increase duration and try make dynamic view resize less laggy
         animationSpec = tween(durationMillis = 0),
         label = "Vulkan",
-        finishedListener = { endValue ->
-          displayMode = if (endValue == 1.0f) {
-            DisplayMode.BOTH
-          } else {
-            DisplayMode.OPEN_GL_ES
-          }
-        }
       )
 
       var openGlWeightValue by remember {
@@ -94,139 +79,122 @@ class CameraActivity : ComponentActivity() {
         // TODO increase duration and try make dynamic view resize less laggy
         animationSpec = tween(durationMillis = 0),
         label = "OpenGL",
-        finishedListener = { endValue ->
-          displayMode = if (endValue == 1.0f) {
-            DisplayMode.BOTH
-          } else {
-            DisplayMode.VULKAN
-          }
-        }
       )
 
-      if (cameraMode == CameraMode.CAMERA_X) {
-        CameraX(
-          coreEngines = previewEngineList,
-          lensFacing = lensFacing
-        )
-      }
-
-      if (cameraMode == CameraMode.CAMERA_2) {
-        // Vulkan is not supported yet
-        displayMode = DisplayMode.OPEN_GL_ES
-        Camera2(
-          coreEngines = previewEngineList,
-          lensFacing = lensFacing
-        )
-      }
-
-      Column {
-        Text(
-          text = cameraMode.name,
-          color = Color.White,
-          textAlign = TextAlign.Center,
-          fontSize = 30.sp,
-          modifier = Modifier
-              .background(Color.DarkGray)
-              .fillMaxWidth()
-              .padding(10.dp)
-        )
-        if (displayMode != DisplayMode.VULKAN) {
-          Box(
-            contentAlignment = Alignment.TopStart,
+      if (vulkanCameraData.cameraMode != CameraMode.NONE) {
+        Column {
+          CameraBox(
             modifier = Modifier
-                .weight(openGlWeight)
-                .fillMaxWidth()
-          ) {
-            CameraPreviewView(
-              coreEngine = previewEngineList.find { it.renderingMode == RenderingMode.OPEN_GL_ES }!!,
-              modifier = Modifier
-                  .matchParentSize()
-                  .clickable(enabled = displayMode == DisplayMode.BOTH) {
-                      vulkanWeightValue = 0.1f
+              .weight(vulkanWeight)
+              .fillMaxWidth(),
+            cameraData = vulkanCameraData,
+            renderingEngine = vulkanRenderingEngine,
+            onCameraChanged = { cameraMode ->
+              vulkanCameraData = CameraData(
+                cameraMode = when (cameraMode) {
+                  CameraMode.CAMERA_X -> {
+                    enginesCamera2.remove(vulkanRenderingEngine)
+                    if (enginesCameraX.contains(vulkanRenderingEngine).not()) {
+                      enginesCameraX.add(vulkanRenderingEngine)
+                    }
+                    CameraMode.CAMERA_X
                   }
-            )
-            Text(
-              text = "OpenGL",
-              fontSize = 20.sp,
-              color = Color.Black,
-              modifier = Modifier.padding(8.dp)
-            )
-          }
-        }
-        if (displayMode != DisplayMode.OPEN_GL_ES) {
-          Box(
-            contentAlignment = Alignment.TopStart,
-            modifier = Modifier
-                .weight(vulkanWeight)
-                .fillMaxWidth()
-          ) {
-            CameraPreviewView(
-              coreEngine = previewEngineList.find { it.renderingMode == RenderingMode.VULKAN }!!,
-              modifier = Modifier
-                  .matchParentSize()
-                  .clickable(enabled = displayMode == DisplayMode.BOTH) {
-                      openGlWeightValue = 0.1f
+
+                  CameraMode.CAMERA_2 -> {
+                    enginesCameraX.remove(vulkanRenderingEngine)
+                    if (enginesCamera2.contains(vulkanRenderingEngine).not()) {
+                      enginesCamera2.add(vulkanRenderingEngine)
+                    }
+                    CameraMode.CAMERA_2
                   }
-            )
-            Text(
-              text = "Vulkan",
-              fontSize = 20.sp,
-              color = Color.White,
-              modifier = Modifier.padding(8.dp)
-            )
-          }
-        }
-        if (cameraMode != CameraMode.NONE) {
-          Row {
-            Button(
-              onClick = {
-                lensFacing = if (lensFacing == CameraSelector.LENS_FACING_FRONT) {
-                  CameraSelector.LENS_FACING_BACK
-                } else {
-                  CameraSelector.LENS_FACING_FRONT
+
+                  CameraMode.NONE -> throw UnsupportedOperationException()
+                },
+                lensOrientation = vulkanCameraData.lensOrientation
+              )
+            },
+            onLensOrientationChanged = { lensOrientation ->
+              vulkanCameraData = CameraData(
+                cameraMode = vulkanCameraData.cameraMode,
+                lensOrientation = when (lensOrientation) {
+                  CameraSelector.LENS_FACING_BACK -> CameraSelector.LENS_FACING_BACK
+                  CameraSelector.LENS_FACING_FRONT -> CameraSelector.LENS_FACING_FRONT
+                  else -> throw UnsupportedOperationException()
                 }
-              },
-              modifier = Modifier
-                  .padding(8.dp)
-                  .weight(1.0f)
-            ) {
-              Text(text = "Switch camera")
+              )
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-              Button(
-                onClick = {
-                  if (cameraMode == CameraMode.CAMERA_X) {
-                    cameraModeState.value = CameraMode.CAMERA_2
-                  } else {
-                    cameraModeState.value = CameraMode.CAMERA_X
+          )
+          CameraBox(
+            modifier = Modifier
+              .weight(openGlWeight)
+              .fillMaxWidth(),
+            cameraData = openGlCameraData,
+            renderingEngine = openGlRenderingEngine,
+            onCameraChanged = { cameraMode ->
+              openGlCameraData = CameraData(
+                cameraMode = when (cameraMode) {
+                  CameraMode.CAMERA_X -> {
+                    enginesCamera2.remove(openGlRenderingEngine)
+                    if (enginesCameraX.contains(openGlRenderingEngine).not()) {
+                      enginesCameraX.add(openGlRenderingEngine)
+                    }
+                    CameraMode.CAMERA_X
                   }
+
+                  CameraMode.CAMERA_2 -> {
+                    enginesCameraX.remove(openGlRenderingEngine)
+                    if (enginesCamera2.contains(openGlRenderingEngine).not()) {
+                      enginesCamera2.add(openGlRenderingEngine)
+                    }
+                    CameraMode.CAMERA_2
+                  }
+
+                  CameraMode.NONE -> throw UnsupportedOperationException()
                 },
-                modifier = Modifier
-                    .padding(8.dp)
-                    .weight(1.0f)
-              ) {
-                Text(text = "To ${if (cameraMode == CameraMode.CAMERA_X) "Camera2" else "CameraX"}")
-              }
+                lensOrientation = openGlCameraData.lensOrientation
+              )
+            },
+            onLensOrientationChanged = { lensOrientation ->
+              openGlCameraData = CameraData(
+                cameraMode = openGlCameraData.cameraMode,
+                lensOrientation = when (lensOrientation) {
+                  CameraSelector.LENS_FACING_BACK -> CameraSelector.LENS_FACING_BACK
+                  CameraSelector.LENS_FACING_FRONT -> CameraSelector.LENS_FACING_FRONT
+                  else -> throw UnsupportedOperationException()
+                }
+              )
             }
-            if (displayMode != DisplayMode.BOTH && cameraMode != CameraMode.CAMERA_2) {
-              Button(
-                onClick = {
-                  displayMode = DisplayMode.BOTH
-                  vulkanWeightValue = 1.0f
-                  openGlWeightValue = 1.0f
-                },
-                modifier = Modifier
-                    .padding(8.dp)
-                    .weight(1.0f)
-              ) {
-                Text(text = "Back to both")
-              }
+          )
+        }
+        if (vulkanCameraData.cameraMode == CameraMode.CAMERA_X || openGlCameraData.cameraMode == CameraMode.CAMERA_X) {
+          CameraX(
+            renderingEngines = enginesCameraX,
+            lensFacing = if (vulkanCameraData.cameraMode == CameraMode.CAMERA_X) {
+              vulkanCameraData.lensOrientation
+            } else if (openGlCameraData.cameraMode == CameraMode.CAMERA_X) {
+              openGlCameraData.lensOrientation
+            } else {
+              throw UnsupportedOperationException()
             }
-          }
+          )
+        }
+
+        if (vulkanCameraData.cameraMode == CameraMode.CAMERA_2 || openGlCameraData.cameraMode == CameraMode.CAMERA_2) {
+          Camera2(
+            renderingEngines = enginesCamera2,
+            lensFacing = if (vulkanCameraData.cameraMode == CameraMode.CAMERA_2) {
+              vulkanCameraData.lensOrientation
+            } else if (openGlCameraData.cameraMode == CameraMode.CAMERA_2) {
+              openGlCameraData.lensOrientation
+            } else {
+              throw UnsupportedOperationException()
+            }
+          )
         }
       }
     }
   }
+
 
   override fun onResume() {
     super.onResume()
@@ -237,13 +205,14 @@ class CameraActivity : ComponentActivity() {
     ) {
       requestPermissionLauncher.launch(Manifest.permission.CAMERA)
     } else {
-      cameraModeState.value = CameraMode.CAMERA_X
+      initialCameraMode = CameraMode.CAMERA_X
     }
   }
 
   override fun onDestroy() {
     super.onDestroy()
-    previewEngineList.forEach { it.destroy() }
+    openGlRenderingEngine.destroy()
+    vulkanRenderingEngine.destroy()
   }
 
   internal companion object {

@@ -25,31 +25,31 @@ public:
   static constexpr auto Name() { return "android/hardware/HardwareBuffer"; }
 };
 
-class CoreEngine {
+class RenderingEngine {
 
 public:
-  static constexpr auto Name() { return "com/dz/camerafast/CoreEngine"; }
+  static constexpr auto Name() { return "com/dz/camerafast/RenderingEngine"; }
 
   static void registerNatives(JNIEnv &env) {
-    jni::Class<CoreEngine>::Singleton(env);
-    jni::RegisterNativePeer<CoreEngine>(
+    jni::Class<RenderingEngine>::Singleton(env);
+    jni::RegisterNativePeer<RenderingEngine>(
             env,
-            jni::Class<CoreEngine>::Find(env),
+            jni::Class<RenderingEngine>::Find(env),
             "peer",
-            jni::MakePeer < CoreEngine, jni::jint > ,
+            jni::MakePeer < RenderingEngine, jni::jint > ,
             "initialize",
             "finalize",
-            METHOD(&CoreEngine::nativeSetSurface, "nativeSetSurface"),
-            METHOD(&CoreEngine::nativeSendCameraFrame, "nativeSendCameraFrame"),
-            METHOD(&CoreEngine::nativeDestroy, "nativeDestroy")
+            METHOD(&RenderingEngine::nativeSetSurface, "nativeSetSurface"),
+            METHOD(&RenderingEngine::nativeSendCameraFrame, "nativeSendCameraFrame"),
+            METHOD(&RenderingEngine::nativeDestroy, "nativeDestroy")
     );
   }
 
-  CoreEngine(JNIEnv &env, jni::jint renderingMode);
+  RenderingEngine(JNIEnv &env, jni::jint renderingMode);
 
-  CoreEngine(CoreEngine const &) = delete;
+  RenderingEngine(RenderingEngine const &) = delete;
 
-  ~CoreEngine();
+  ~RenderingEngine();
 
   void nativeSetSurface(JNIEnv &env, jni::Object <Surface> const &surface, jni::jint width,
                         jni::jint height);
