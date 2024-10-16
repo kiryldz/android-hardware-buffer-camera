@@ -40,14 +40,15 @@ fun CameraBox(
       text = "${cameraData.cameraMode.name} | ${renderingEngine.mode.name}",
       color = Color.White,
       textAlign = TextAlign.Center,
-      fontSize = 30.sp,
+      fontSize = 16.sp,
       modifier = Modifier
         .background(Color.DarkGray)
         .fillMaxWidth()
         .padding(10.dp)
     )
     // Camera2 with needed config is not supported for all devices
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    // and also is not yet supported for Vulkan
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && renderingEngine.mode != RenderingMode.VULKAN) {
       FloatingActionButton(
         modifier = Modifier.align(Alignment.BottomEnd),
         onClick = {

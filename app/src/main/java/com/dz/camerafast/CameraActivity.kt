@@ -11,8 +11,11 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -120,6 +123,13 @@ class CameraActivity : ComponentActivity() {
                   CameraSelector.LENS_FACING_BACK -> CameraSelector.LENS_FACING_BACK
                   CameraSelector.LENS_FACING_FRONT -> CameraSelector.LENS_FACING_FRONT
                   else -> throw UnsupportedOperationException()
+                }.also { newLensOrientation ->
+                  if (openGlCameraData.cameraMode == vulkanCameraData.cameraMode) {
+                    openGlCameraData = CameraData(
+                      openGlCameraData.cameraMode,
+                      newLensOrientation
+                    )
+                  }
                 }
               )
             }
@@ -161,6 +171,13 @@ class CameraActivity : ComponentActivity() {
                   CameraSelector.LENS_FACING_BACK -> CameraSelector.LENS_FACING_BACK
                   CameraSelector.LENS_FACING_FRONT -> CameraSelector.LENS_FACING_FRONT
                   else -> throw UnsupportedOperationException()
+                }.also { newLensOrientation ->
+                  if (openGlCameraData.cameraMode == vulkanCameraData.cameraMode) {
+                    vulkanCameraData = CameraData(
+                      vulkanCameraData.cameraMode,
+                      newLensOrientation
+                    )
+                  }
                 }
               )
             }

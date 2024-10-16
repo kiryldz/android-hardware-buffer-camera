@@ -18,6 +18,7 @@ import androidx.annotation.RequiresApi
 import androidx.camera.core.CameraSelector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,6 +47,12 @@ fun Camera2(
 
   val cameraManager: CameraManager by lazy {
     context.applicationContext.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+  }
+
+  val renderingEnginesListState: List<RenderingEngine> = remember {
+    mutableStateListOf<RenderingEngine>().apply {
+      addAll(renderingEngines)
+    }
   }
 
   var currentCameraDevice: CameraDevice? by remember {
@@ -117,7 +124,7 @@ fun Camera2(
         {
           val image = it.acquireLatestImage()
           image.hardwareBuffer?.let { buffer ->
-            renderingEngines.forEach { engine ->
+            renderingEnginesListState.forEach { engine ->
               engine.sendCameraFrame(
                 buffer = buffer,
                 rotationDegrees = rotationDegrees,
