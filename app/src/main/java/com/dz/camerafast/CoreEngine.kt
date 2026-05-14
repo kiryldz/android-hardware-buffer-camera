@@ -60,7 +60,11 @@ class CoreEngine(
 
   override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
     Log.i(TAG, "Surface texture size changed, width $width, height $height")
-    nativeSetSurface(surface, width, height)
+    // Size-only path: avoid going through nativeSetSurface here, because that route would call
+    // ANativeWindow_fromSurface on every tick — each call returns a fresh +1 reference that we
+    // don't release in the same-window branch, so it would leak one ANativeWindow ref per frame
+    // of the resize animation.
+    nativeUpdateWindowSize(width, height)
   }
 
   override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
@@ -84,6 +88,8 @@ class CoreEngine(
   var peer: Long = 0
 
   private external fun nativeSetSurface(surface: Surface?, width: Int, height: Int)
+
+  private external fun nativeUpdateWindowSize(width: Int, height: Int)
 
   private external fun nativeSendCameraFrame(
     buffer: HardwareBuffer,

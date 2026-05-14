@@ -43,6 +43,13 @@ void CoreEngine::nativeSetSurface(JNIEnv &env, const jni::Object<Surface> &surfa
   }
 }
 
+/** called from Android main thread on every TextureView size tick **/
+void CoreEngine::nativeUpdateWindowSize(JNIEnv &env, jni::jint width, jni::jint height) {
+  if (aNativeWindow != nullptr) {
+    renderer->updateWindowSize(width, height);
+  }
+}
+
 /** called from worker thread **/
 void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBuffer> &buffer,
                                        jni::jint rotationDegrees, jni::jboolean backCamera) {

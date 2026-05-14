@@ -31,21 +31,31 @@ void BaseRenderer::setWindow(ANativeWindow *window) {
 }
 
 void BaseRenderer::updateWindowSize(int width, int height) {
-  // Publish the latest requested size unconditionally. If a task is already in flight, it will
-  // pick this value up when it runs — no point queueing another full swapchain rebuild behind it.
-  pendingViewportWidth.store(width, std::memory_order_relaxed);
-  pendingViewportHeight.store(height, std::memory_order_relaxed);
-  bool expected = false;
-  if (!resizeTaskScheduled.compare_exchange_strong(expected, true,
-                                                   std::memory_order_acq_rel)) {
+  // Coalesce: stash the latest requested size and only schedule a render-thread task if one is
+  // not already in flight. The mutex covers both pending dimensions and the scheduled flag so
+  // we never observe a torn (width, height) pair or race on the schedule decision.
+  bool needsSchedule;
+  {
+    std::lock_guard<std::mutex> lock(resizeMutex);
+    pendingViewportWidth = width;
+    pendingViewportHeight = height;
+    needsSchedule = !resizeTaskScheduled;
+    resizeTaskScheduled = true;
+  }
+  if (!needsSchedule) {
     return;
   }
   renderThread->scheduleTask([this] {
-    // Clear the scheduled flag BEFORE reading the pending size: any producer that runs after this
-    // point will schedule a fresh task with the newer dimensions.
-    resizeTaskScheduled.store(false, std::memory_order_release);
-    const int width = pendingViewportWidth.load(std::memory_order_relaxed);
-    const int height = pendingViewportHeight.load(std::memory_order_relaxed);
+    int width;
+    int height;
+    {
+      // Clear the scheduled flag BEFORE we go on to call onWindowSizeUpdated: any producer that
+      // runs after this point will schedule a fresh task with the newer dimensions.
+      std::lock_guard<std::mutex> lock(resizeMutex);
+      resizeTaskScheduled = false;
+      width = pendingViewportWidth;
+      height = pendingViewportHeight;
+    }
     if (viewportWidth != width || viewportHeight != height) {
       viewportWidth = width;
       viewportHeight = height;

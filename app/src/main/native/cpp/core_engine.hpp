@@ -40,6 +40,7 @@ public:
             "initialize",
             "finalize",
             METHOD(&CoreEngine::nativeSetSurface, "nativeSetSurface"),
+            METHOD(&CoreEngine::nativeUpdateWindowSize, "nativeUpdateWindowSize"),
             METHOD(&CoreEngine::nativeSendCameraFrame, "nativeSendCameraFrame"),
             METHOD(&CoreEngine::nativeRefit, "nativeRefit"),
             METHOD(&CoreEngine::nativeDestroy, "nativeDestroy")
@@ -54,6 +55,8 @@ public:
 
   void nativeSetSurface(JNIEnv &env, jni::Object <Surface> const &surface, jni::jint width,
                         jni::jint height);
+
+  void nativeUpdateWindowSize(JNIEnv &env, jni::jint width, jni::jint height);
 
   void nativeSendCameraFrame(JNIEnv &env, jni::Object <HardwareBuffer> const &buffer, jni::jint rotationDegrees, jni::jboolean backCamera);
 

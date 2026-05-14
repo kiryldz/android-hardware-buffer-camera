@@ -1,7 +1,5 @@
 #pragma once
 
-#include <atomic>
-
 #include <android/choreographer.h>
 #include <android/hardware_buffer.h>
 #include <android/native_window.h>
@@ -111,13 +109,14 @@ private:
     std::condition_variable initCondition;
     std::condition_variable destroyCondition;
 
-    // Coalescing state for updateWindowSize: layout animations can fire surfaceChanged at ~60Hz,
-    // and a queued backlog of full swapchain rebuilds is what makes Vulkan resize feel sluggish.
-    // Producers stash the latest requested size and only schedule a render-thread task if one is
-    // not already in flight; the task reads whichever size is current when it runs.
-    std::atomic<int> pendingViewportWidth{-1};
-    std::atomic<int> pendingViewportHeight{-1};
-    std::atomic<bool> resizeTaskScheduled{false};
+    // Coalescing state for updateWindowSize: layout animations can fire surfaceTextureSizeChanged
+    // at ~60Hz, and a queued backlog of per-tick work is what would make resize feel sluggish.
+    // Producers stash the latest requested size under resizeMutex and only schedule a render-thread
+    // task if one is not already in flight; the task reads whichever size is current when it runs.
+    std::mutex resizeMutex;
+    int pendingViewportWidth = -1;
+    int pendingViewportHeight = -1;
+    bool resizeTaskScheduled = false;
 };
 
 } // namespace android
