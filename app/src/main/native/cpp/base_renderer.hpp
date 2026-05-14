@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <android/choreographer.h>
 #include <android/hardware_buffer.h>
 #include <android/native_window.h>
@@ -27,6 +29,18 @@ public:
 
     void updateWindowSize(int width, int height);
 
+    /**
+     * Re-fit the renderer's output to the current viewport size — Vulkan rebuilds its swapchain,
+     * OpenGL runs glViewport. Called by the UI at key points of a resize animation (threshold
+     * crossings, endpoint settlement); the filtering of which moments count as "key" lives on
+     * the Kotlin side, so every call into this method is expected to be meaningful.
+     *
+     * This is intentionally the ONLY path that drives onWindowSizeUpdated in concrete renderers.
+     * Per-tick layout changes from surfaceTextureSizeChanged only update viewport bookkeeping
+     * and the MVP, never fire the renderer-specific hook.
+     */
+    void refit();
+
     void resetWindow();
 
     /**
@@ -42,7 +56,18 @@ protected:
 
     virtual void onWindowDestroyed() = 0;
 
+    /**
+     * Lightweight per-tick size update. Called from every updateWindowSize task — i.e. once per
+     * surfaceTextureSizeChanged callback. Cheap operations belong here (e.g. OpenGL's glViewport);
+     * expensive ones (e.g. Vulkan swapchain rebuild) should leave this empty and react in onRefit.
+     */
     virtual void onWindowSizeUpdated(int width, int height) = 0;
+
+    /**
+     * Heavy refit hook, fired only at UI-driven key frames (see refit()). Default is no-op;
+     * Vulkan overrides to rebuild the swapchain at the current viewport size.
+     */
+    virtual void onRefit(int width, int height) {}
 
     virtual void hwBufferToTexture(AHardwareBuffer *buffer) = 0;
 
@@ -63,6 +88,7 @@ protected:
     int viewportHeight = -1;
     glm::mat4 mvp;
 
+
     /**
      * The mutex needed as worker camera thread produces buffers while render thread consumes them.
      */
@@ -75,6 +101,7 @@ private:
      */
     void updateMvp();
 
+
     float bufferImageRatio = 1.0f;
     int rotationDegrees = 0;
     bool backCamera = false;
@@ -83,6 +110,14 @@ private:
     std::mutex mutex;
     std::condition_variable initCondition;
     std::condition_variable destroyCondition;
+
+    // Coalescing state for updateWindowSize: layout animations can fire surfaceChanged at ~60Hz,
+    // and a queued backlog of full swapchain rebuilds is what makes Vulkan resize feel sluggish.
+    // Producers stash the latest requested size and only schedule a render-thread task if one is
+    // not already in flight; the task reads whichever size is current when it runs.
+    std::atomic<int> pendingViewportWidth{-1};
+    std::atomic<int> pendingViewportHeight{-1};
+    std::atomic<bool> resizeTaskScheduled{false};
 };
 
 } // namespace android

@@ -41,6 +41,7 @@ public:
             "finalize",
             METHOD(&CoreEngine::nativeSetSurface, "nativeSetSurface"),
             METHOD(&CoreEngine::nativeSendCameraFrame, "nativeSendCameraFrame"),
+            METHOD(&CoreEngine::nativeRefit, "nativeRefit"),
             METHOD(&CoreEngine::nativeDestroy, "nativeDestroy")
     );
   }
@@ -55,6 +56,8 @@ public:
                         jni::jint height);
 
   void nativeSendCameraFrame(JNIEnv &env, jni::Object <HardwareBuffer> const &buffer, jni::jint rotationDegrees, jni::jboolean backCamera);
+
+  void nativeRefit(JNIEnv &env);
 
   void nativeDestroy(JNIEnv &env);
 

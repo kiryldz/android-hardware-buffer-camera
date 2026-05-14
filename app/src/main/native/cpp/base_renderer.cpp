@@ -31,17 +31,39 @@ void BaseRenderer::setWindow(ANativeWindow *window) {
 }
 
 void BaseRenderer::updateWindowSize(int width, int height) {
-  renderThread->scheduleTask([this, width, height] {
-    // calculate MVP on CPU, if we would know it will be updated more often -
-    // of course better move matrix calculation to GPU
+  // Publish the latest requested size unconditionally. If a task is already in flight, it will
+  // pick this value up when it runs — no point queueing another full swapchain rebuild behind it.
+  pendingViewportWidth.store(width, std::memory_order_relaxed);
+  pendingViewportHeight.store(height, std::memory_order_relaxed);
+  bool expected = false;
+  if (!resizeTaskScheduled.compare_exchange_strong(expected, true,
+                                                   std::memory_order_acq_rel)) {
+    return;
+  }
+  renderThread->scheduleTask([this] {
+    // Clear the scheduled flag BEFORE reading the pending size: any producer that runs after this
+    // point will schedule a fresh task with the newer dimensions.
+    resizeTaskScheduled.store(false, std::memory_order_release);
+    const int width = pendingViewportWidth.load(std::memory_order_relaxed);
+    const int height = pendingViewportHeight.load(std::memory_order_relaxed);
     if (viewportWidth != width || viewportHeight != height) {
       viewportWidth = width;
       viewportHeight = height;
       LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
+      // Per-tick lightweight hook — OpenGL's glViewport must run on every layout tick or the
+      // aspect ratio of rendered content goes wrong during a resize. Heavy size-driven work
+      // (Vulkan swapchain rebuild) is gated by onRefit() instead.
       onWindowSizeUpdated(width, height);
     }
-    // update MVP in any case to cover the use-case of brining app to background and back
     updateMvp();
+  });
+}
+
+void BaseRenderer::refit() {
+  renderThread->scheduleTask([this] {
+    if (viewportWidth > 0 && viewportHeight > 0) {
+      onRefit(viewportWidth, viewportHeight);
+    }
   });
 }
 

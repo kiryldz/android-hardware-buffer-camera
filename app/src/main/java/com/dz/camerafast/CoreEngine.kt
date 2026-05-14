@@ -1,25 +1,25 @@
 package com.dz.camerafast
 
-import android.graphics.PixelFormat
+import android.graphics.SurfaceTexture
 import android.hardware.HardwareBuffer
 import android.util.Log
 import android.view.Surface
-import android.view.SurfaceHolder
+import android.view.TextureView
 import androidx.annotation.Keep
 
 @Keep
 class CoreEngine(
   val renderingMode: RenderingMode,
-) : SurfaceHolder.Callback {
+) : TextureView.SurfaceTextureListener {
 
-  internal var surfaceHolder: SurfaceHolder? = null
+  private var surface: Surface? = null
+
+  internal var textureView: TextureView? = null
     set(value) {
-      // remove callback for previous camera preview view if needed
-      field?.removeCallback(this)
+      // remove listener for previous camera preview view if needed
+      field?.surfaceTextureListener = null
       field = value
-      // we will use RGBA_8888 here and use same config in render thread
-      field?.setFormat(PixelFormat.RGBA_8888)
-      field?.addCallback(this)
+      field?.surfaceTextureListener = this
     }
 
   init {
@@ -31,17 +31,47 @@ class CoreEngine(
     nativeSendCameraFrame(buffer, rotationDegrees, backCamera)
   }
 
-  override fun surfaceCreated(p0: SurfaceHolder) {
-    // do nothing
+  // Last preview weight passed to refit(). Only read/written from whichever thread the UI calls
+  // refit() on (Compose's main thread via SideEffect), so no synchronization needed.
+  private var previousWeight: Float = 1.0f
+
+  /**
+   * Called by the UI on every preview-weight change (e.g. from a Compose SideEffect over an
+   * animateFloatAsState value). When the transition crosses one of [REFIT_THRESHOLDS] or settles
+   * at an endpoint (0.0 / 1.0), the renderer is asked to re-fit its output to the current view
+   * bounds — that's a swapchain rebuild for Vulkan and a glViewport for OpenGL. Intermediate
+   * animation ticks are filtered out here so the JNI layer only sees the values worth reacting to.
+   *
+   * @return true if this transition actually triggered a native refit.
+   */
+  fun refit(weight: Float): Boolean {
+    val triggered = shouldRefit(previousWeight, weight)
+    previousWeight = weight
+    if (triggered) {
+      nativeRefit()
+    }
+    return triggered
   }
 
-  override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-    Log.i(TAG, "Surface changed ${holder.surface}, format $format, width $width, height $height")
-    nativeSetSurface(holder.surface, width, height)
+  override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+    Log.i(TAG, "Surface texture available, width $width, height $height")
+    surface = Surface(surfaceTexture).also { nativeSetSurface(it, width, height) }
   }
 
-  override fun surfaceDestroyed(p0: SurfaceHolder) {
+  override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+    Log.i(TAG, "Surface texture size changed, width $width, height $height")
+    nativeSetSurface(surface, width, height)
+  }
+
+  override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
     nativeSetSurface(null, 0, 0)
+    surface?.release()
+    surface = null
+    return true
+  }
+
+  override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {
+    // do nothing
   }
 
   fun destroy() {
@@ -60,6 +90,8 @@ class CoreEngine(
     rotationDegrees: Int,
     backCamera: Boolean
   )
+
+  private external fun nativeRefit()
 
   private external fun nativeDestroy()
 
@@ -109,6 +141,23 @@ class CoreEngine(
 
   private companion object {
     private const val TAG = "DzCoreKotlin"
+
+    // Weight values at which the renderer should re-fit (Vulkan rebuilds its swapchain, OpenGL
+    // runs glViewport). Crossings of these thresholds — plus endpoint settlement at 0.0 / 1.0 —
+    // are the only events forwarded to JNI. Intermediate animation ticks are dropped client-side
+    // so the native layer doesn't have to track previous values or implement crossing detection.
+    private val REFIT_THRESHOLDS = floatArrayOf(0.1f, 0.5f)
+
+    private fun shouldRefit(prev: Float, curr: Float): Boolean {
+      for (threshold in REFIT_THRESHOLDS) {
+        val crossedUp = prev < threshold && curr >= threshold
+        val crossedDown = prev > threshold && curr <= threshold
+        if (crossedUp || crossedDown) return true
+      }
+      // Endpoint settlement: a transition INTO exactly 0.0 or 1.0 means the animation just ended,
+      // so the renderer needs one final re-fit to match the rested view size.
+      return (curr == 0.0f && prev != 0.0f) || (curr == 1.0f && prev != 1.0f)
+    }
 
     init {
       System.loadLibrary("native-engine")

@@ -47,13 +47,19 @@ protected:
   }
 
   void onWindowSizeUpdated(int width, int height) override {
+    // Intentionally a no-op for Vulkan. Per-tick layout changes during an animation only update
+    // the MVP via BaseRenderer; the swapchain re-fit is deferred to UI-driven key frames in
+    // onRefit() so we don't pay a full rebuild for every frame of an animation.
+  }
+
+  void onRefit(int width, int height) override {
+    // Vulkan globals only exist between onWindowCreated and onWindowDestroyed; refit() can be
+    // invoked outside that window so guard before dereferencing any Vulkan handle.
+    if (!deviceInfo.initialized) {
+      return;
+    }
     if (width != swapchainInfo.displaySize.width || height != swapchainInfo.displaySize.height) {
-      LOGI("->onWindowSizeUpdated");
-      CALL_VK(vkDeviceWaitIdle(deviceInfo.device))
-      cleanupSwapChain();
-      createSwapChain(width, height);
-      createFrameBuffersAndImages();
-      LOGI("<-onWindowSizeUpdated");
+      recreateSwapChain(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
     }
   }
 
@@ -186,7 +192,8 @@ private:
 
   void createVulkanDevice(VkApplicationInfo* appInfo);
 
-  void createSwapChain(uint32_t width = 0, uint32_t height = 0);
+  void createSwapChain(uint32_t width = 0, uint32_t height = 0,
+                       VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
 
   void createRenderPass();
 
@@ -204,9 +211,16 @@ private:
 
   void recordCommandBuffer();
 
+  /**
+   * Wait for device idle, tear down the swapchain-dependent objects, recreate them for the new
+   * surface size, and re-record command buffers so they no longer reference destroyed framebuffers.
+   * Pass (0, 0) to use the current surface extent (recovery path from VK_ERROR_OUT_OF_DATE_KHR).
+   */
+  void recreateSwapChain(uint32_t width, uint32_t height);
+
   ////// Destroy functions
 
-  void cleanupSwapChain() const;
+  void cleanupSwapChain();
 
   void cleanup();
 

@@ -1,7 +1,7 @@
 package com.dz.camerafast
 
 import android.annotation.SuppressLint
-import android.view.SurfaceView
+import android.view.TextureView
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -15,7 +15,7 @@ fun CameraPreviewView(
   AndroidView(
     modifier = modifier,
     factory = { context ->
-      SurfaceView(context).apply { coreEngine.surfaceHolder = this.holder }
+      TextureView(context).apply { coreEngine.textureView = this }
     },
     update = {
       // could not be used efficiently as this will always be called from main thread

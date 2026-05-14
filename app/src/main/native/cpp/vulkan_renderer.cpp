@@ -146,7 +146,8 @@ void VulkanRenderer::createVulkanDevice(VkApplicationInfo *appInfo) {
   vkGetDeviceQueue(deviceInfo.device, 0, 0, &deviceInfo.queue);
 }
 
-void VulkanRenderer::createSwapChain(uint32_t width, uint32_t height) {
+void VulkanRenderer::createSwapChain(uint32_t width, uint32_t height,
+                                     VkSwapchainKHR oldSwapchain) {
   LOGI("->createSwapChain");
   // **********************************************************
   // Get the surface capabilities because:
@@ -203,7 +204,9 @@ void VulkanRenderer::createSwapChain(uint32_t width, uint32_t height) {
           .presentMode = VK_PRESENT_MODE_FIFO_KHR,
           // changed to true based on https://vulkan-tutorial.com/Drawing_a_triangle/Presentation/Swap_chain
           .clipped = VK_TRUE,
-          .oldSwapchain = VK_NULL_HANDLE,
+          // Hand off to the driver so it can reuse internal allocations from the previous chain.
+          // Without this, every resize tick triggers a full driver-side reallocation.
+          .oldSwapchain = oldSwapchain,
   };
   CALL_VK(vkCreateSwapchainKHR(deviceInfo.device, &swapchainCreateInfo, nullptr,
                                &swapchainInfo.swapchain))
@@ -768,11 +771,13 @@ void VulkanRenderer::renderImpl() {
   auto result = vkAcquireNextImageKHR(deviceInfo.device, swapchainInfo.swapchain,
                                       UINT64_MAX, renderInfo.semaphore, VK_NULL_HANDLE,
                                       &nextIndex);
-  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-    LOGW("vkAcquireNextImageKHR returned %i; swapchain will be recreated", result);
-    cleanupSwapChain();
-    createSwapChain();
-    createFrameBuffersAndImages();
+  if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+    // The surface has changed in a way that makes the swapchain unusable. The semaphore is left
+    // unsignaled in this case (per spec), so we can safely reuse it after recreating the swapchain.
+    // VK_SUBOPTIMAL_KHR is intentionally not handled here: acquisition succeeded, so we render this
+    // frame and let the next acquire trigger recreation if the surface keeps drifting.
+    LOGW("vkAcquireNextImageKHR returned VK_ERROR_OUT_OF_DATE_KHR; recreating swapchain");
+    recreateSwapChain(0, 0);
     return;
   }
   CALL_VK(vkResetFences(deviceInfo.device, 1, &renderInfo.fence))
@@ -1077,14 +1082,70 @@ void VulkanRenderer::createVertexBuffer() {
   vkUnmapMemory(deviceInfo.device, buffersInfo.vertexBufferMemory);
 }
 
-void VulkanRenderer::cleanupSwapChain() const {
+void VulkanRenderer::cleanupSwapChain() {
   LOGI("->cleanupSwapChain");
-  for (int i = 0; i < swapchainInfo.swapchainLength; ++i) {
+  for (uint32_t i = 0; i < swapchainInfo.swapchainLength; ++i) {
     vkDestroyFramebuffer(deviceInfo.device, swapchainInfo.framebuffers[i], nullptr);
     vkDestroyImageView(deviceInfo.device, swapchainInfo.displayViews[i], nullptr);
   }
   vkDestroySwapchainKHR(deviceInfo.device, swapchainInfo.swapchain, nullptr);
+  delete[] swapchainInfo.framebuffers;
+  delete[] swapchainInfo.displayViews;
+  delete[] swapchainInfo.displayImages;
+  swapchainInfo.framebuffers = nullptr;
+  swapchainInfo.displayViews = nullptr;
+  swapchainInfo.displayImages = nullptr;
   LOGI("<-cleanupSwapChain");
+}
+
+void VulkanRenderer::recreateSwapChain(uint32_t width, uint32_t height) {
+  LOGI("->recreateSwapChain");
+  // We only ever submit and present on this single queue, so waiting on it is sufficient — much
+  // cheaper than vkDeviceWaitIdle, which serializes every queue on the device.
+  CALL_VK(vkQueueWaitIdle(deviceInfo.queue))
+
+  // Tear down resources that reference the old swapchain images (framebuffers + image views), but
+  // keep the old swapchain handle alive so we can pass it as oldSwapchain to the new one — this
+  // lets the driver retire it gracefully instead of reallocating from scratch.
+  VkSwapchainKHR retiredSwapchain = swapchainInfo.swapchain;
+  for (uint32_t i = 0; i < swapchainInfo.swapchainLength; ++i) {
+    vkDestroyFramebuffer(deviceInfo.device, swapchainInfo.framebuffers[i], nullptr);
+    vkDestroyImageView(deviceInfo.device, swapchainInfo.displayViews[i], nullptr);
+  }
+  delete[] swapchainInfo.framebuffers;
+  delete[] swapchainInfo.displayViews;
+  delete[] swapchainInfo.displayImages;
+  swapchainInfo.framebuffers = nullptr;
+  swapchainInfo.displayViews = nullptr;
+  swapchainInfo.displayImages = nullptr;
+
+  createSwapChain(width, height, retiredSwapchain);
+  vkDestroySwapchainKHR(deviceInfo.device, retiredSwapchain, nullptr);
+  createFrameBuffersAndImages();
+  // The new swapchain may have a different image count than the old one — reallocate the command
+  // buffer storage so we have exactly one primary command buffer per framebuffer.
+  if (renderInfo.cmdBufferLen != swapchainInfo.swapchainLength) {
+    vkFreeCommandBuffers(deviceInfo.device, renderInfo.cmdPool,
+                         renderInfo.cmdBufferLen, renderInfo.cmdBuffer);
+    delete[] renderInfo.cmdBuffer;
+    renderInfo.cmdBufferLen = swapchainInfo.swapchainLength;
+    renderInfo.cmdBuffer = new VkCommandBuffer[swapchainInfo.swapchainLength];
+    VkCommandBufferAllocateInfo cmdBufferCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .pNext = nullptr,
+            .commandPool = renderInfo.cmdPool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = renderInfo.cmdBufferLen,
+    };
+    CALL_VK(vkAllocateCommandBuffers(deviceInfo.device, &cmdBufferCreateInfo,
+                                     renderInfo.cmdBuffer))
+  }
+  // Re-record so render() does not submit a command buffer that references destroyed framebuffers.
+  // Skipped when there is no camera frame yet — the first hwBufferToTexture() will record then.
+  if (cameraInitialized) {
+    recordCommandBuffer();
+  }
+  LOGI("<-recreateSwapChain");
 }
 
 void VulkanRenderer::cleanup() {
@@ -1101,6 +1162,7 @@ void VulkanRenderer::cleanup() {
   vkDestroySemaphore(deviceInfo.device, renderInfo.semaphore, nullptr);
   vkDestroyFence(deviceInfo.device, renderInfo.fence, nullptr);
   vkDestroyCommandPool(deviceInfo.device, renderInfo.cmdPool, nullptr);
+  delete[] renderInfo.cmdBuffer;
   vkDestroySampler(deviceInfo.device, externalTextureInfo.sampler, nullptr);
   if (cameraInitialized) {
     vkDestroyImage(deviceInfo.device, externalTextureInfo.image, nullptr);

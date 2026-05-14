@@ -75,6 +75,12 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
   }
 }
 
+void CoreEngine::nativeRefit(JNIEnv &env) {
+  if (renderer) {
+    renderer->refit();
+  }
+}
+
 void CoreEngine::nativeDestroy(JNIEnv &env) {
   LOGI("Core engine destroy started");
   renderer.reset();
