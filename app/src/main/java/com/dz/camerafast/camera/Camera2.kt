@@ -1,4 +1,4 @@
-package com.dz.camerafast
+package com.dz.camerafast.camera
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LifecycleStartEffect
 import com.dz.camerafast.CameraActivity.Companion.TAG
+import com.dz.camerafast.RenderingEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -33,7 +34,7 @@ import kotlin.coroutines.resume
 @RequiresApi(Build.VERSION_CODES.Q)
 @Composable
 fun Camera2(
-  coreEngines: List<CoreEngine>,
+  renderingEngines: List<RenderingEngine>,
   lensFacing: Int,
   context: Context = LocalContext.current,
   coroutineScope: CoroutineScope = rememberCoroutineScope()
@@ -116,7 +117,7 @@ fun Camera2(
         {
           val image = it.acquireLatestImage()
           image.hardwareBuffer?.let { buffer ->
-            coreEngines.forEach { engine ->
+            renderingEngines.forEach { engine ->
               engine.sendCameraFrame(
                 buffer = buffer,
                 rotationDegrees = rotationDegrees,

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(CORE_ENGINE)
+project(RENDERING_ENGINE)
 
 if (NOT ANDROID_NDK_TOOLCHAIN_INCLUDED)
     message(FATAL_ERROR "-- Toolchain file not included, see https://developer.android.com/ndk/guides/cmake")
@@ -11,7 +11,7 @@ add_library(
         SHARED
         app/src/main/native/cpp/main.cpp
         app/src/main/native/cpp/base_renderer.cpp
-        app/src/main/native/cpp/core_engine.cpp
+        app/src/main/native/cpp/rendering_engine.cpp
         app/src/main/native/cpp/opengl_renderer.cpp
         app/src/main/native/cpp/vulkan_renderer.cpp
         app/src/main/native/cpp/vulkan_wrapper.cpp
