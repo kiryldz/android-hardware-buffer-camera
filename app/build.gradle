@@ -14,11 +14,27 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // libs/shaderc/c++_static/ only ships arm64-v8a binaries.
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
     }
 
     ndkVersion = '25.1.8937393'
+    signingConfigs {
+        // Personal-use convenience: sign release builds with the local debug
+        // keystore so `adb install` works out of the box. Not for distribution.
+        release {
+            storeFile file("${System.getProperty('user.home')}/.android/debug.keystore")
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             ndk {
