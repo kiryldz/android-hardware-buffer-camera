@@ -10,6 +10,8 @@ import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -25,6 +27,11 @@ fun CameraX(
   lensFacing: Int,
   context: Context = LocalContext.current
 ) {
+  // Wrapped so the analyzer (set once per camera open) always sees the current
+  // engine list — engines can hop between Camera2 and CameraX mid-stream without
+  // reopening the camera.
+  val currentRenderingEngines by rememberUpdatedState(renderingEngines)
+
   LifecycleStartEffect(lensFacing) {
     val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
     cameraProviderFuture.addListener({
@@ -45,7 +52,7 @@ fun CameraX(
       imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
         Log.i(TAG, "New image ${imageProxy.hashCode()} arrived!")
         imageProxy.image?.hardwareBuffer?.let { buffer ->
-          renderingEngines.forEach {
+          currentRenderingEngines.forEach {
             it.sendCameraFrame(
               buffer = buffer,
               rotationDegrees = imageProxy.imageInfo.rotationDegrees,

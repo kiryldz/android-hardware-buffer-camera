@@ -10,7 +10,6 @@ import androidx.camera.core.CameraSelector
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,14 +39,6 @@ class CameraActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
-      val enginesCamera2 = remember {
-        mutableStateListOf(vulkanRenderingEngine, openGlRenderingEngine)
-      }
-
-      val enginesCameraX = remember {
-        mutableStateListOf(vulkanRenderingEngine, openGlRenderingEngine)
-      }
-
       var vulkanCameraData by remember {
         mutableStateOf(CameraData(initialCameraMode, CameraSelector.LENS_FACING_FRONT))
       }
@@ -55,6 +46,13 @@ class CameraActivity : ComponentActivity() {
       var openGlCameraData by remember {
         mutableStateOf(CameraData(initialCameraMode, CameraSelector.LENS_FACING_FRONT))
       }
+
+      // When an engine moves onto the source the other engine is already on, adopt
+      // the other engine's lens so both states agree before the camera opens.
+      fun moveTo(self: CameraData, other: CameraData, target: CameraMode) = CameraData(
+        cameraMode = target,
+        lensOrientation = if (other.cameraMode == target) other.lensOrientation else self.lensOrientation
+      )
 
       if (vulkanCameraData.cameraMode != CameraMode.NONE) {
         Column {
@@ -65,36 +63,12 @@ class CameraActivity : ComponentActivity() {
             cameraData = vulkanCameraData,
             renderingEngine = vulkanRenderingEngine,
             onCameraChanged = { cameraMode ->
-              vulkanCameraData = CameraData(
-                cameraMode = when (cameraMode) {
-                  CameraMode.CAMERA_X -> {
-                    enginesCamera2.remove(vulkanRenderingEngine)
-                    if (enginesCameraX.contains(vulkanRenderingEngine).not()) {
-                      enginesCameraX.add(vulkanRenderingEngine)
-                    }
-                    CameraMode.CAMERA_X
-                  }
-
-                  CameraMode.CAMERA_2 -> {
-                    enginesCameraX.remove(vulkanRenderingEngine)
-                    if (enginesCamera2.contains(vulkanRenderingEngine).not()) {
-                      enginesCamera2.add(vulkanRenderingEngine)
-                    }
-                    CameraMode.CAMERA_2
-                  }
-
-                  CameraMode.NONE -> throw UnsupportedOperationException()
-                },
-                lensOrientation = vulkanCameraData.lensOrientation
-              )
+              vulkanCameraData = moveTo(vulkanCameraData, openGlCameraData, cameraMode)
             },
             onLensOrientationChanged = { lensOrientation ->
-              vulkanCameraData = CameraData(
-                cameraMode = vulkanCameraData.cameraMode,
-                lensOrientation = lensOrientation
-              )
+              vulkanCameraData = vulkanCameraData.copy(lensOrientation = lensOrientation)
               if (openGlCameraData.cameraMode == vulkanCameraData.cameraMode) {
-                openGlCameraData = CameraData(openGlCameraData.cameraMode, lensOrientation)
+                openGlCameraData = openGlCameraData.copy(lensOrientation = lensOrientation)
               }
             }
           )
@@ -105,62 +79,43 @@ class CameraActivity : ComponentActivity() {
             cameraData = openGlCameraData,
             renderingEngine = openGlRenderingEngine,
             onCameraChanged = { cameraMode ->
-              openGlCameraData = CameraData(
-                cameraMode = when (cameraMode) {
-                  CameraMode.CAMERA_X -> {
-                    enginesCamera2.remove(openGlRenderingEngine)
-                    if (enginesCameraX.contains(openGlRenderingEngine).not()) {
-                      enginesCameraX.add(openGlRenderingEngine)
-                    }
-                    CameraMode.CAMERA_X
-                  }
-
-                  CameraMode.CAMERA_2 -> {
-                    enginesCameraX.remove(openGlRenderingEngine)
-                    if (enginesCamera2.contains(openGlRenderingEngine).not()) {
-                      enginesCamera2.add(openGlRenderingEngine)
-                    }
-                    CameraMode.CAMERA_2
-                  }
-
-                  CameraMode.NONE -> throw UnsupportedOperationException()
-                },
-                lensOrientation = openGlCameraData.lensOrientation
-              )
+              openGlCameraData = moveTo(openGlCameraData, vulkanCameraData, cameraMode)
             },
             onLensOrientationChanged = { lensOrientation ->
-              openGlCameraData = CameraData(
-                cameraMode = openGlCameraData.cameraMode,
-                lensOrientation = lensOrientation
-              )
+              openGlCameraData = openGlCameraData.copy(lensOrientation = lensOrientation)
               if (openGlCameraData.cameraMode == vulkanCameraData.cameraMode) {
-                vulkanCameraData = CameraData(vulkanCameraData.cameraMode, lensOrientation)
+                vulkanCameraData = vulkanCameraData.copy(lensOrientation = lensOrientation)
               }
             }
           )
         }
-        if (vulkanCameraData.cameraMode == CameraMode.CAMERA_X || openGlCameraData.cameraMode == CameraMode.CAMERA_X) {
+
+        val cameraXEngines = buildList {
+          if (vulkanCameraData.cameraMode == CameraMode.CAMERA_X) add(vulkanRenderingEngine)
+          if (openGlCameraData.cameraMode == CameraMode.CAMERA_X) add(openGlRenderingEngine)
+        }
+        if (cameraXEngines.isNotEmpty()) {
           CameraX(
-            renderingEngines = enginesCameraX,
+            renderingEngines = cameraXEngines,
             lensFacing = if (vulkanCameraData.cameraMode == CameraMode.CAMERA_X) {
               vulkanCameraData.lensOrientation
-            } else if (openGlCameraData.cameraMode == CameraMode.CAMERA_X) {
-              openGlCameraData.lensOrientation
             } else {
-              throw UnsupportedOperationException()
+              openGlCameraData.lensOrientation
             }
           )
         }
 
-        if (vulkanCameraData.cameraMode == CameraMode.CAMERA_2 || openGlCameraData.cameraMode == CameraMode.CAMERA_2) {
+        val camera2Engines = buildList {
+          if (vulkanCameraData.cameraMode == CameraMode.CAMERA_2) add(vulkanRenderingEngine)
+          if (openGlCameraData.cameraMode == CameraMode.CAMERA_2) add(openGlRenderingEngine)
+        }
+        if (camera2Engines.isNotEmpty()) {
           Camera2(
-            renderingEngines = enginesCamera2,
+            renderingEngines = camera2Engines,
             lensFacing = if (vulkanCameraData.cameraMode == CameraMode.CAMERA_2) {
               vulkanCameraData.lensOrientation
-            } else if (openGlCameraData.cameraMode == CameraMode.CAMERA_2) {
-              openGlCameraData.lensOrientation
             } else {
-              throw UnsupportedOperationException()
+              openGlCameraData.lensOrientation
             }
           )
         }

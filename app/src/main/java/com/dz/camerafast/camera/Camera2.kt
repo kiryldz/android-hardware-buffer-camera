@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -47,6 +48,11 @@ fun Camera2(
   val cameraManager: CameraManager by lazy {
     context.applicationContext.getSystemService(Context.CAMERA_SERVICE) as CameraManager
   }
+
+  // Wrapped so the per-frame listener (set once when the camera opens) always sees
+  // the current engine list — engines can hop between Camera2 and CameraX mid-stream
+  // without reopening the camera.
+  val currentRenderingEngines by rememberUpdatedState(renderingEngines)
 
   var currentCameraDevice: CameraDevice? by remember {
     mutableStateOf(null)
@@ -117,7 +123,7 @@ fun Camera2(
         {
           val image = it.acquireLatestImage()
           image.hardwareBuffer?.let { buffer ->
-            renderingEngines.forEach { engine ->
+            currentRenderingEngines.forEach { engine ->
               engine.sendCameraFrame(
                 buffer = buffer,
                 rotationDegrees = rotationDegrees,
