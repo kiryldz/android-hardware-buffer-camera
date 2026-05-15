@@ -80,6 +80,10 @@ class CoreEngine(
     if (textureView?.surfaceTexture === surfaceTexture) {
       textureView = null
     }
+    // Returning true tells TextureView to release the SurfaceTexture itself (per the contract on
+    // SurfaceTextureListener.onSurfaceTextureDestroyed: true = framework releases, false = we
+    // take ownership and must call SurfaceTexture.release() ourselves). We don't keep the
+    // SurfaceTexture beyond this callback, so framework-side release is correct.
     return true
   }
 
