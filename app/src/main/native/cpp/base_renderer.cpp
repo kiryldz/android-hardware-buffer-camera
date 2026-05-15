@@ -81,6 +81,10 @@ void BaseRenderer::updateWindowSize(int width, int height) {
       // aspect ratio of rendered content goes wrong during a resize. Heavy size-driven work
       // (Vulkan swapchain rebuild) is gated by onRefit() instead.
       onWindowSizeUpdated(width, height);
+      // Refresh MVP for this applied size before the next iteration. Otherwise the projection /
+      // aspect ratio would stay stale across the animation: OpenGL's glViewport would track the
+      // current viewport but the uMvpMatrix (and Vulkan's UBO) would not.
+      updateMvp();
     }
   });
 }
