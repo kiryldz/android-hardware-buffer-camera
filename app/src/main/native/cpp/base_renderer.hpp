@@ -104,6 +104,15 @@ private:
      */
     void updateMvp();
 
+    /**
+     * Schedule the render-thread consumer task that drains the latest pendingViewport* into
+     * the applied viewportWidth/Height. Used by both updateWindowSize (initial schedule) and
+     * the consumer task itself (re-schedule when a newer pending value arrived mid-task) so the
+     * consumer body always re-reads pending under resizeMutex — never with a stale snapshot,
+     * and never via the producer entry that would clobber pending.
+     */
+    void scheduleApplyPendingViewportSize();
+
 
     float bufferImageRatio = 1.0f;
     int rotationDegrees = 0;

@@ -39,9 +39,12 @@ void BaseRenderer::updateWindowSize(int width, int height) {
     needsSchedule = !resizeTaskScheduled;
     resizeTaskScheduled = true;
   }
-  if (!needsSchedule) {
-    return;
+  if (needsSchedule) {
+    scheduleApplyPendingViewportSize();
   }
+}
+
+void BaseRenderer::scheduleApplyPendingViewportSize() {
   renderThread->scheduleTask([this] {
     int width;
     int height;
@@ -92,9 +95,10 @@ void BaseRenderer::updateWindowSize(int width, int height) {
     }
 
     if (reschedule) {
-      renderThread->scheduleTask([this] {
-        updateWindowSize(pendingViewportWidth, pendingViewportHeight);
-      });
+      // Re-post the same consumer body — NOT the producer entry. The next iteration will read
+      // pendingViewport* fresh under resizeMutex, so we can't ship a stale snapshot of pending
+      // dims and we can't clobber a newer producer write by re-entering through updateWindowSize.
+      scheduleApplyPendingViewportSize();
     }
   });
 }
