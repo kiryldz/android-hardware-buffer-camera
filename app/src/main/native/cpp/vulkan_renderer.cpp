@@ -774,10 +774,17 @@ void VulkanRenderer::renderImpl() {
   if (result == VK_ERROR_OUT_OF_DATE_KHR) {
     // The surface has changed in a way that makes the swapchain unusable. The semaphore is left
     // unsignaled in this case (per spec), so we can safely reuse it after recreating the swapchain.
-    // VK_SUBOPTIMAL_KHR is intentionally not handled here: acquisition succeeded, so we render this
-    // frame and let the next acquire trigger recreation if the surface keeps drifting.
+    // VK_SUBOPTIMAL_KHR is intentionally NOT routed here: acquisition succeeded, so we render
+    // this frame and let the next acquire trigger recreation if the surface keeps drifting.
     LOGW("vkAcquireNextImageKHR returned VK_ERROR_OUT_OF_DATE_KHR; recreating swapchain");
     recreateSwapChain(0, 0);
+    return;
+  }
+  if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+    // Anything else (VK_ERROR_SURFACE_LOST_KHR, VK_ERROR_DEVICE_LOST, …) means nextIndex is not
+    // valid — submitting/presenting with it is UB. Skip the frame; the next render iteration
+    // will retry. CALL_VK on a fatal code is not used because we don't want to abort the looper.
+    LOGE("vkAcquireNextImageKHR returned fatal %i; dropping frame", result);
     return;
   }
   CALL_VK(vkResetFences(deviceInfo.device, 1, &renderInfo.fence))
