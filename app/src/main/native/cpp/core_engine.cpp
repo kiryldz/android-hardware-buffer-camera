@@ -74,7 +74,7 @@ void CoreEngine::nativeUpdateWindowSize(JNIEnv &env, jni::jint width, jni::jint 
 /** called from worker thread **/
 void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBuffer> &buffer,
                                        jni::jint rotationDegrees, jni::jboolean backCamera) {
-  std::lock_guard<std::mutex> lock(coreEngineMutex);
+  std::unique_lock<std::mutex> lock(coreEngineMutex);
   if (!renderer) {
     return;
   }
@@ -82,8 +82,17 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
   AHardwareBuffer_Desc cameraBufferDescription;
   AHardwareBuffer_describe(cameraBuffer, &cameraBufferDescription);
   if (cameraBufferDescription.usage & AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE) {
+    // Fast path — processCameraFrame just schedules a render-thread task and returns. Keep the
+    // mutex held; it costs ~nothing.
     renderer->processCameraFrame(cameraBuffer, rotationDegrees, backCamera);
-  } else {
+    return;
+  }
+  // CPU fallback. The hot work below (two AHardwareBuffer_locks + memcpy + two unlocks) is in
+  // the milliseconds range on devices that hit this branch and would otherwise block main-thread
+  // JNI calls (nativeUpdateWindowSize during a resize animation, nativeRefit, nativeSetSurface)
+  // behind us. Drop the mutex around it, retaining gpuBuffer with our own +1 reference so that
+  // a concurrent nativeDestroy can release its ref without the underlying buffer disappearing.
+  if (!gpuBuffer) {
     AHardwareBuffer_Desc gpuBufferDescription {
             .width = cameraBufferDescription.width,
             .height = cameraBufferDescription.height,
@@ -91,20 +100,30 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
             .format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM,
             .usage = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE | AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER,
     };
-    if (!gpuBuffer) {
-      int res = AHardwareBuffer_allocate(&gpuBufferDescription, &gpuBuffer);
-      LOGI("HW buffer from camera does not support AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE.");
-      LOGI("Allocating GPU HW buffer manually. Result: %d", res);
-    }
-    void* gpuData = nullptr;
-    void* cpuData = nullptr;
-    AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
-    AHardwareBuffer_lock(gpuBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, -1, nullptr, &gpuData);
-    memcpy(gpuData, cpuData, cameraBufferDescription.height * cameraBufferDescription.width * 4);
-    AHardwareBuffer_unlock(cameraBuffer, nullptr);
-    AHardwareBuffer_unlock(gpuBuffer, nullptr);
-    renderer->processCameraFrame(gpuBuffer, rotationDegrees, backCamera);
+    int res = AHardwareBuffer_allocate(&gpuBufferDescription, &gpuBuffer);
+    LOGI("HW buffer from camera does not support AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE.");
+    LOGI("Allocating GPU HW buffer manually. Result: %d", res);
   }
+  AHardwareBuffer *localGpuBuffer = gpuBuffer;
+  AHardwareBuffer_acquire(localGpuBuffer);
+  lock.unlock();
+
+  void* gpuData = nullptr;
+  void* cpuData = nullptr;
+  AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
+  AHardwareBuffer_lock(localGpuBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, -1, nullptr, &gpuData);
+  memcpy(gpuData, cpuData, cameraBufferDescription.height * cameraBufferDescription.width * 4);
+  AHardwareBuffer_unlock(cameraBuffer, nullptr);
+  AHardwareBuffer_unlock(localGpuBuffer, nullptr);
+
+  lock.lock();
+  // nativeDestroy may have fired during the unlocked window. If so, drop this frame — the
+  // renderer is gone and processCameraFrame would crash. Our extra ref keeps localGpuBuffer
+  // alive long enough to release it cleanly below.
+  if (renderer) {
+    renderer->processCameraFrame(localGpuBuffer, rotationDegrees, backCamera);
+  }
+  AHardwareBuffer_release(localGpuBuffer);
 }
 
 void CoreEngine::nativeRefit(JNIEnv &env) {
