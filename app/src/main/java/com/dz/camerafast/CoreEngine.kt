@@ -163,9 +163,13 @@ class CoreEngine(
         val crossedDown = prev > threshold && curr <= threshold
         if (crossedUp || crossedDown) return true
       }
-      // Endpoint settlement: a transition INTO exactly 0.0 or 1.0 means the animation just ended,
-      // so the renderer needs one final re-fit to match the rested view size.
-      return (curr == 0.0f && prev != 0.0f) || (curr == 1.0f && prev != 1.0f)
+      // Endpoint settlement: detect transitions INTO the rest region rather than equality with
+      // exactly 0f / 1f. animateFloatAsState with tween lands precisely on the target today, but
+      // spring or other animation specs can overshoot or settle slightly past — using <= 0f /
+      // >= 1f keeps the final refit reliable across animation-spec changes.
+      val settledAtZero = curr <= 0.0f && prev > 0.0f
+      val settledAtOne = curr >= 1.0f && prev < 1.0f
+      return settledAtZero || settledAtOne
     }
 
     init {
