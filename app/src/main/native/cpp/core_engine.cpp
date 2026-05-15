@@ -73,6 +73,12 @@ void CoreEngine::nativeUpdateWindowSize(JNIEnv &env, jni::jint width, jni::jint 
 /** called from worker thread **/
 void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBuffer> &buffer,
                                        jni::jint rotationDegrees, jni::jboolean backCamera) {
+  // Camera worker can fire after nativeDestroy() has reset the renderer. Skip the frame rather
+  // than deref a moved-from unique_ptr — this is not race-free against a concurrent destroy
+  // (would need a mutex for that) but covers the common ordering where destroy completes first.
+  if (!renderer) {
+    return;
+  }
   auto cameraBuffer = AHardwareBuffer_fromHardwareBuffer(&env, jni::Unwrap(*buffer.get()));
   AHardwareBuffer_Desc cameraBufferDescription;
   AHardwareBuffer_describe(cameraBuffer, &cameraBufferDescription);
