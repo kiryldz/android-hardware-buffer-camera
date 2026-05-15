@@ -50,6 +50,7 @@ void BaseRenderer::updateWindowSize(int width, int height) {
     while (true) {
       int width;
       int height;
+      bool sizeChanged;
       {
         // Single critical section that covers the read of pending dims, the compare against
         // applied dims, and (when we proceed) the write of applied dims. Keeping the compare
@@ -60,19 +61,26 @@ void BaseRenderer::updateWindowSize(int width, int height) {
         std::lock_guard<std::mutex> lock(resizeMutex);
         width = pendingViewportWidth;
         height = pendingViewportHeight;
-        if (viewportWidth == width && viewportHeight == height) {
+        sizeChanged = (viewportWidth != width || viewportHeight != height);
+        if (!sizeChanged) {
           resizeTaskScheduled = false;
-          return;
+        } else {
+          viewportWidth = width;
+          viewportHeight = height;
         }
-        viewportWidth = width;
-        viewportHeight = height;
       }
-      LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
+      if (!sizeChanged) {
+        // Refresh MVP on the way out even when the size was unchanged: producers (e.g. surface
+        // re-creation on background → foreground) can re-fire updateWindowSize with the same
+        // dimensions, and the rest of the renderer relies on the MVP being current.
+        updateMvp();
+        return;
+      }
+      LOGI("Update window size, width=%i, height=%i", width, height);
       // Per-tick lightweight hook — OpenGL's glViewport must run on every layout tick or the
       // aspect ratio of rendered content goes wrong during a resize. Heavy size-driven work
       // (Vulkan swapchain rebuild) is gated by onRefit() instead.
       onWindowSizeUpdated(width, height);
-      updateMvp();
     }
   });
 }
