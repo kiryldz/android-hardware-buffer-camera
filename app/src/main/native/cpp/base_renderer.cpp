@@ -59,8 +59,8 @@ void BaseRenderer::updateWindowSize(int width, int height) {
       // aspect ratio of rendered content goes wrong during a resize. Heavy size-driven work
       // (Vulkan swapchain rebuild) is gated by onRefit() instead.
       onWindowSizeUpdated(width, height);
+      updateMvp();
     }
-    updateMvp();
   });
 }
 
@@ -88,6 +88,9 @@ void BaseRenderer::resetWindow() {
 }
 
 void BaseRenderer::updateMvp() {
+  if (viewportWidth <= 0 || viewportHeight <= 0) {
+    return;
+  }
   float viewportRatio =
           static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
   float ratio = viewportRatio * bufferImageRatio;

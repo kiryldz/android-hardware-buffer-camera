@@ -64,6 +64,12 @@ protected:
   }
 
   void onWindowDestroyed() override {
+    // If onWindowCreated failed (e.g. InitVulkan returned false) we can still be invoked by
+    // BaseRenderer::resetWindow during teardown. In that case deviceInfo.device is VK_NULL_HANDLE
+    // (value-initialized) and vkDeviceWaitIdle on it would crash — bail out cleanly.
+    if (!deviceInfo.initialized) {
+      return;
+    }
     CALL_VK(vkDeviceWaitIdle(deviceInfo.device))
     cleanup();
     deviceInfo.initialized = false;

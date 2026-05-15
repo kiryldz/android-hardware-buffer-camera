@@ -57,9 +57,12 @@ protected:
     virtual void onWindowDestroyed() = 0;
 
     /**
-     * Lightweight per-tick size update. Called from every updateWindowSize task — i.e. once per
-     * surfaceTextureSizeChanged callback. Cheap operations belong here (e.g. OpenGL's glViewport);
-     * expensive ones (e.g. Vulkan swapchain rebuild) should leave this empty and react in onRefit.
+     * Lightweight size update. Called from each scheduled updateWindowSize task on the render
+     * thread, with the LATEST observed dimensions. Note that updateWindowSize coalesces — a burst
+     * of surfaceTextureSizeChanged callbacks collapses into a single task that sees only the most
+     * recent (width, height), so intermediate sizes are skipped by design. Cheap operations
+     * belong here (e.g. OpenGL's glViewport); expensive ones (e.g. Vulkan swapchain rebuild)
+     * should leave this empty and react in onRefit instead.
      */
     virtual void onWindowSizeUpdated(int width, int height) = 0;
 
