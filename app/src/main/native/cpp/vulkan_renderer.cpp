@@ -1108,6 +1108,11 @@ void VulkanRenderer::createVertexBuffer() {
 
 void VulkanRenderer::cleanupSwapChain() {
   LOGI("->cleanupSwapChain");
+  // Guard against a no-op double-call: if the swapchain handle is already gone, the per-image
+  // arrays were freed in the previous call and swapchainLength may still be non-zero.
+  if (swapchainInfo.swapchain == VK_NULL_HANDLE) {
+    return;
+  }
   for (uint32_t i = 0; i < swapchainInfo.swapchainLength; ++i) {
     vkDestroyFramebuffer(deviceInfo.device, swapchainInfo.framebuffers[i], nullptr);
     vkDestroyImageView(deviceInfo.device, swapchainInfo.displayViews[i], nullptr);
@@ -1119,6 +1124,8 @@ void VulkanRenderer::cleanupSwapChain() {
   swapchainInfo.framebuffers = nullptr;
   swapchainInfo.displayViews = nullptr;
   swapchainInfo.displayImages = nullptr;
+  swapchainInfo.swapchain = VK_NULL_HANDLE;
+  swapchainInfo.swapchainLength = 0;
   LOGI("<-cleanupSwapChain");
 }
 
