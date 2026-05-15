@@ -51,6 +51,12 @@ void BaseRenderer::updateWindowSize(int width, int height) {
       int width;
       int height;
       {
+        // Single critical section that covers the read of pending dims, the compare against
+        // applied dims, and (when we proceed) the write of applied dims. Keeping the compare
+        // and the write under the same lock as the producer's pending-store means we can't
+        // straddle a producer update — either the producer's new pending lands BEFORE our
+        // compare (we apply it this iteration) or AFTER our scheduled-flag clear (it schedules
+        // a fresh task). The heavy work below runs unlocked so producers stay responsive.
         std::lock_guard<std::mutex> lock(resizeMutex);
         width = pendingViewportWidth;
         height = pendingViewportHeight;
@@ -58,9 +64,9 @@ void BaseRenderer::updateWindowSize(int width, int height) {
           resizeTaskScheduled = false;
           return;
         }
+        viewportWidth = width;
+        viewportHeight = height;
       }
-      viewportWidth = width;
-      viewportHeight = height;
       LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
       // Per-tick lightweight hook — OpenGL's glViewport must run on every layout tick or the
       // aspect ratio of rendered content goes wrong during a resize. Heavy size-driven work
