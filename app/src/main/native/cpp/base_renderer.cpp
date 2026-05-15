@@ -31,9 +31,6 @@ void BaseRenderer::setWindow(ANativeWindow *window) {
 }
 
 void BaseRenderer::updateWindowSize(int width, int height) {
-  // Coalesce: stash the latest requested size and only schedule a render-thread task if one is
-  // not already in flight. The mutex covers both pending dimensions and the scheduled flag so
-  // we never observe a torn (width, height) pair or race on the schedule decision.
   bool needsSchedule;
   {
     std::lock_guard<std::mutex> lock(resizeMutex);
@@ -49,8 +46,6 @@ void BaseRenderer::updateWindowSize(int width, int height) {
     int width;
     int height;
     {
-      // Clear the scheduled flag BEFORE we go on to call onWindowSizeUpdated: any producer that
-      // runs after this point will schedule a fresh task with the newer dimensions.
       std::lock_guard<std::mutex> lock(resizeMutex);
       resizeTaskScheduled = false;
       width = pendingViewportWidth;

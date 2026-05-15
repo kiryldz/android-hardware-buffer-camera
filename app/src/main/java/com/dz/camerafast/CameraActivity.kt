@@ -144,10 +144,8 @@ class CameraActivity : ComponentActivity() {
           Box(
             contentAlignment = Alignment.TopStart,
             modifier = Modifier
-                // Modifier.weight requires a strictly positive value, so floor at a sub-pixel
-                // weight. Animating the state to 0.0 (see click handlers below) thus lands here as
-                // an imperceptible sliver right before the finishedListener removes the Box —
-                // smooth all the way to "gone" instead of jumping from a visible 10% slice.
+                // Modifier.weight requires a strictly positive value,
+                // so floor at a sub-pixel weight
                 .weight(openGlWeight.coerceAtLeast(MIN_WEIGHT))
                 .fillMaxWidth()
           ) {

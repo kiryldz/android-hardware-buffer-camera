@@ -116,7 +116,7 @@ private:
 
   ///////// Structs and variables
 
-  bool cameraInitialized;
+  bool cameraInitialized = false;
 
   struct UniformBufferObject {
     glm::mat4 mvp;
@@ -134,7 +134,7 @@ private:
     VkSurfaceKHR surface;
     VkQueue queue;
   };
-  VulkanDeviceInfo deviceInfo;
+  VulkanDeviceInfo deviceInfo{};
 
   struct VulkanSwapchainInfo {
     VkSwapchainKHR swapchain;
@@ -148,7 +148,7 @@ private:
     VkImage* displayImages;
     VkImageView* displayViews;
   };
-  VulkanSwapchainInfo swapchainInfo;
+  VulkanSwapchainInfo swapchainInfo{};
 
   struct VulkanExternalTextureInfo {
     VkSampler sampler;
@@ -156,7 +156,7 @@ private:
     VkDeviceMemory memory;
     VkImageView view;
   };
-  VulkanExternalTextureInfo externalTextureInfo;
+  VulkanExternalTextureInfo externalTextureInfo{};
 
   struct VulkanBuffersInfo {
     VkBuffer vertexBuf;
@@ -165,7 +165,7 @@ private:
     VkDeviceMemory vertexBufferMemory;
     void* uniformBufferMapped;
   };
-  VulkanBuffersInfo buffersInfo;
+  VulkanBuffersInfo buffersInfo{};
 
   struct VulkanGfxPipelineInfo {
     VkDescriptorSetLayout dscLayout;
@@ -176,7 +176,7 @@ private:
     VkPipeline pipeline;
     VkWriteDescriptorSet* descWrites;
   };
-  VulkanGfxPipelineInfo gfxPipelineInfo;
+  VulkanGfxPipelineInfo gfxPipelineInfo{};
 
   struct VulkanRenderInfo {
     VkRenderPass renderPass;
@@ -186,7 +186,7 @@ private:
     VkSemaphore semaphore;
     VkFence fence;
   };
-  VulkanRenderInfo renderInfo;
+  VulkanRenderInfo renderInfo{};
 
   ///////// Create functions
 

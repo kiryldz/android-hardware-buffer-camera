@@ -39,8 +39,6 @@ class CoreEngine(
     nativeSendCameraFrame(buffer, rotationDegrees, backCamera)
   }
 
-  // Last preview weight passed to refit(). Only read/written from whichever thread the UI calls
-  // refit() on (Compose's main thread via SideEffect), so no synchronization needed.
   private var previousWeight: Float = 1.0f
 
   /**
@@ -63,15 +61,12 @@ class CoreEngine(
 
   override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
     Log.i(TAG, "Surface texture available, width $width, height $height")
+    surface?.release()
     surface = Surface(surfaceTexture).also { nativeSetSurface(it, width, height) }
   }
 
   override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
     Log.i(TAG, "Surface texture size changed, width $width, height $height")
-    // Size-only path: avoid going through nativeSetSurface here, because that route would call
-    // ANativeWindow_fromSurface on every tick — each call returns a fresh +1 reference that we
-    // don't release in the same-window branch, so it would leak one ANativeWindow ref per frame
-    // of the resize animation.
     nativeUpdateWindowSize(width, height)
   }
 
