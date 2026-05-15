@@ -103,6 +103,10 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
     int res = AHardwareBuffer_allocate(&gpuBufferDescription, &gpuBuffer);
     LOGI("HW buffer from camera does not support AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE.");
     LOGI("Allocating GPU HW buffer manually. Result: %d", res);
+    if (res != 0 || gpuBuffer == nullptr) {
+      LOGI("Failed to allocate GPU HW buffer; dropping frame.");
+      return;
+    }
   }
   AHardwareBuffer *localGpuBuffer = gpuBuffer;
   AHardwareBuffer_acquire(localGpuBuffer);
