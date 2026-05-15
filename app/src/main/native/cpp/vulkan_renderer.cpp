@@ -816,10 +816,14 @@ void VulkanRenderer::renderImpl() {
   const auto presentResult = vkQueuePresentKHR(deviceInfo.queue, &presentInfo);
   // vkQueuePresentKHR can also signal that the swapchain is out of date or suboptimal — e.g.
   // when the surface size changes from under us. Acquire alone is not enough; we have to react
-  // here too, otherwise we'd keep presenting against a stale swapchain.
+  // here too, otherwise we'd keep presenting against a stale swapchain. Any other non-SUCCESS
+  // return (e.g. VK_ERROR_SURFACE_LOST_KHR, VK_ERROR_DEVICE_LOST) is fatal for this surface —
+  // log it loudly so it's visible in logcat rather than silently dropping the failure.
   if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
     LOGW("vkQueuePresentKHR returned %i; recreating swapchain", presentResult);
     recreateSwapChain(0, 0);
+  } else if (presentResult != VK_SUCCESS) {
+    LOGE("vkQueuePresentKHR returned fatal %i", presentResult);
   }
 }
 
