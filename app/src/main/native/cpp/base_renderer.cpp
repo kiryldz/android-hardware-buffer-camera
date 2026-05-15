@@ -43,48 +43,58 @@ void BaseRenderer::updateWindowSize(int width, int height) {
     return;
   }
   renderThread->scheduleTask([this] {
-    // Keep resizeTaskScheduled = true for the whole duration of this task so producers running
-    // in parallel can't schedule a second task — they'll instead just update pending dims, which
-    // we'll pick up on the next iteration of this loop. The slot is released only after we
-    // observe a tick where pending == applied, guaranteeing no producer's latest size is lost.
-    while (true) {
-      int width;
-      int height;
-      bool sizeChanged;
-      {
-        // Single critical section that covers the read of pending dims, the compare against
-        // applied dims, and (when we proceed) the write of applied dims. Keeping the compare
-        // and the write under the same lock as the producer's pending-store means we can't
-        // straddle a producer update — either the producer's new pending lands BEFORE our
-        // compare (we apply it this iteration) or AFTER our scheduled-flag clear (it schedules
-        // a fresh task). The heavy work below runs unlocked so producers stay responsive.
-        std::lock_guard<std::mutex> lock(resizeMutex);
-        width = pendingViewportWidth;
-        height = pendingViewportHeight;
-        sizeChanged = (viewportWidth != width || viewportHeight != height);
-        if (!sizeChanged) {
-          resizeTaskScheduled = false;
-        } else {
-          viewportWidth = width;
-          viewportHeight = height;
-        }
+    int width;
+    int height;
+    bool sizeChanged;
+    {
+      // Process at most one pending size per scheduled task so the render thread yields back
+      // to the looper between resize ticks instead of draining an arbitrarily long animation
+      // inside a single callback. Producers still coalesce naturally by updating the pending
+      // dimensions under the same lock.
+      std::lock_guard<std::mutex> lock(resizeMutex);
+      width = pendingViewportWidth;
+      height = pendingViewportHeight;
+      sizeChanged = (viewportWidth != width || viewportHeight != height);
+      if (sizeChanged) {
+        viewportWidth = width;
+        viewportHeight = height;
       }
-      if (!sizeChanged) {
-        // Refresh MVP on the way out even when the size was unchanged: producers (e.g. surface
-        // re-creation on background → foreground) can re-fire updateWindowSize with the same
-        // dimensions, and the rest of the renderer relies on the MVP being current.
-        updateMvp();
-        return;
-      }
+    }
+
+    if (!sizeChanged) {
+      // Refresh MVP even when the size was unchanged: producers (e.g. surface re-creation on
+      // background → foreground) can re-fire updateWindowSize with the same dimensions, and the
+      // rest of the renderer relies on the MVP being current.
+      updateMvp();
+    } else {
       LOGI("Update window size, width=%i, height=%i", width, height);
       // Per-tick lightweight hook — OpenGL's glViewport must run on every layout tick or the
       // aspect ratio of rendered content goes wrong during a resize. Heavy size-driven work
       // (Vulkan swapchain rebuild) is gated by onRefit() instead.
       onWindowSizeUpdated(width, height);
-      // Refresh MVP for this applied size before the next iteration. Otherwise the projection /
-      // aspect ratio would stay stale across the animation: OpenGL's glViewport would track the
-      // current viewport but the uMvpMatrix (and Vulkan's UBO) would not.
+      // Refresh MVP for this applied size before yielding back to the looper. Otherwise the
+      // projection / aspect ratio would stay stale across the animation: OpenGL's glViewport
+      // would track the current viewport but the uMvpMatrix (and Vulkan's UBO) would not.
       updateMvp();
+    }
+
+    bool reschedule = false;
+    {
+      // If a producer updated the pending size while this task was running, keep the scheduled
+      // slot claimed and post a fresh task so the looper can interleave other render-thread work
+      // before we apply the newer size. Otherwise release the slot.
+      std::lock_guard<std::mutex> lock(resizeMutex);
+      if (pendingViewportWidth != viewportWidth || pendingViewportHeight != viewportHeight) {
+        reschedule = true;
+      } else {
+        resizeTaskScheduled = false;
+      }
+    }
+
+    if (reschedule) {
+      renderThread->scheduleTask([this] {
+        updateWindowSize(pendingViewportWidth, pendingViewportHeight);
+      });
     }
   });
 }
