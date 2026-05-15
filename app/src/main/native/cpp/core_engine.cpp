@@ -26,6 +26,7 @@ CoreEngine::~CoreEngine() = default;
 /** called from Android main thread **/
 void CoreEngine::nativeSetSurface(JNIEnv &env, const jni::Object<Surface> &surface,
                                   jni::jint width, jni::jint height) {
+  std::lock_guard<std::mutex> lock(coreEngineMutex);
   if (surface.get() != nullptr) {
     // ANativeWindow_fromSurface returns a NEW strong reference (+1 on the refcount); we own it
     // and must release it ourselves. Do NOT also call ANativeWindow_acquire — that would leak.
@@ -64,7 +65,7 @@ void CoreEngine::nativeSetSurface(JNIEnv &env, const jni::Object<Surface> &surfa
 
 /** called from Android main thread on every TextureView size tick **/
 void CoreEngine::nativeUpdateWindowSize(JNIEnv &env, jni::jint width, jni::jint height) {
-  // A late callback can race with nativeDestroy() resetting the renderer — be defensive.
+  std::lock_guard<std::mutex> lock(coreEngineMutex);
   if (renderer && aNativeWindow != nullptr) {
     renderer->updateWindowSize(width, height);
   }
@@ -73,9 +74,7 @@ void CoreEngine::nativeUpdateWindowSize(JNIEnv &env, jni::jint width, jni::jint 
 /** called from worker thread **/
 void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBuffer> &buffer,
                                        jni::jint rotationDegrees, jni::jboolean backCamera) {
-  // Camera worker can fire after nativeDestroy() has reset the renderer. Skip the frame rather
-  // than deref a moved-from unique_ptr — this is not race-free against a concurrent destroy
-  // (would need a mutex for that) but covers the common ordering where destroy completes first.
+  std::lock_guard<std::mutex> lock(coreEngineMutex);
   if (!renderer) {
     return;
   }
@@ -109,12 +108,14 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
 }
 
 void CoreEngine::nativeRefit(JNIEnv &env) {
+  std::lock_guard<std::mutex> lock(coreEngineMutex);
   if (renderer) {
     renderer->refit();
   }
 }
 
 void CoreEngine::nativeDestroy(JNIEnv &env) {
+  std::lock_guard<std::mutex> lock(coreEngineMutex);
   LOGI("Core engine destroy started");
   renderer.reset();
   LOGI("Core engine destroy passed");
