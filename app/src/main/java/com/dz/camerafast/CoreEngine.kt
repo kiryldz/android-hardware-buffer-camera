@@ -20,6 +20,14 @@ class CoreEngine(
       field?.surfaceTextureListener = null
       field = value
       field?.surfaceTextureListener = this
+      // If the TextureView already has a SurfaceTexture (common when the view is re-attached or
+      // the listener is set after layout), the framework won't fire onSurfaceTextureAvailable —
+      // do it ourselves so the native surface still gets set up.
+      if (value?.isAvailable == true) {
+        value.surfaceTexture?.let { texture ->
+          onSurfaceTextureAvailable(texture, value.width, value.height)
+        }
+      }
     }
 
   init {

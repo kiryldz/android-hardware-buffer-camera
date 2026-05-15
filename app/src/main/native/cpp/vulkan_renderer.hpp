@@ -212,8 +212,10 @@ private:
   void recordCommandBuffer();
 
   /**
-   * Wait for device idle, tear down the swapchain-dependent objects, recreate them for the new
-   * surface size, and re-record command buffers so they no longer reference destroyed framebuffers.
+   * Drain the graphics/present queue, tear down the swapchain-dependent objects, recreate them
+   * for the new surface size, and re-record command buffers so they no longer reference
+   * destroyed framebuffers. Uses vkQueueWaitIdle on the single queue we submit to (cheaper than
+   * vkDeviceWaitIdle, sufficient because all swapchain-related work goes through that queue).
    * Pass (0, 0) to use the current surface extent (recovery path from VK_ERROR_OUT_OF_DATE_KHR).
    */
   void recreateSwapChain(uint32_t width, uint32_t height);

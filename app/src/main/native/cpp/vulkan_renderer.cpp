@@ -806,7 +806,14 @@ void VulkanRenderer::renderImpl() {
           .pImageIndices = &nextIndex,
           .pResults = nullptr,
   };
-  vkQueuePresentKHR(deviceInfo.queue, &presentInfo);
+  const auto presentResult = vkQueuePresentKHR(deviceInfo.queue, &presentInfo);
+  // vkQueuePresentKHR can also signal that the swapchain is out of date or suboptimal — e.g.
+  // when the surface size changes from under us. Acquire alone is not enough; we have to react
+  // here too, otherwise we'd keep presenting against a stale swapchain.
+  if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
+    LOGW("vkQueuePresentKHR returned %i; recreating swapchain", presentResult);
+    recreateSwapChain(0, 0);
+  }
 }
 
 void VulkanRenderer::createDescriptorSet() {
@@ -982,8 +989,14 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
 }
 
 void VulkanRenderer::recordCommandBuffer() {
+  // This function may be called more than once per command buffer (e.g. from recreateSwapChain
+  // after the framebuffers have been rebuilt). The pool is created with
+  // VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT (see createOtherStaff), so the call to
+  // vkBeginCommandBuffer below implicitly resets each buffer from Executable -> Initial — no
+  // explicit vkResetCommandBuffer is required. Callers must ensure the buffers are not in the
+  // Pending state (already in flight on the GPU); recreateSwapChain handles that with
+  // vkQueueWaitIdle before getting here.
   for (int bufferIndex = 0; bufferIndex < swapchainInfo.swapchainLength; bufferIndex++) {
-    // We start by creating and declare the "beginning" our command buffer
     VkCommandBufferBeginInfo cmdBufferBeginInfo{
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .pNext = nullptr,

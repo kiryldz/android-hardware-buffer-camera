@@ -28,14 +28,16 @@ public:
     void updateWindowSize(int width, int height);
 
     /**
-     * Re-fit the renderer's output to the current viewport size — Vulkan rebuilds its swapchain,
-     * OpenGL runs glViewport. Called by the UI at key points of a resize animation (threshold
-     * crossings, endpoint settlement); the filtering of which moments count as "key" lives on
-     * the Kotlin side, so every call into this method is expected to be meaningful.
+     * Re-fit the renderer's output to the current viewport size at a UI-driven key frame
+     * (threshold crossings, endpoint settlement). The filtering of which moments count as "key"
+     * lives on the Kotlin side, so every call into this method is expected to be meaningful.
      *
-     * This is intentionally the ONLY path that drives onWindowSizeUpdated in concrete renderers.
-     * Per-tick layout changes from surfaceTextureSizeChanged only update viewport bookkeeping
-     * and the MVP, never fire the renderer-specific hook.
+     * Drives the renderer's onRefit() hook on the render thread — Vulkan rebuilds its swapchain
+     * there; OpenGL doesn't override it because its per-tick glViewport in onWindowSizeUpdated
+     * already keeps the rasterization area in sync.
+     *
+     * Note: onWindowSizeUpdated is the SEPARATE per-tick hook that fires on every
+     * updateWindowSize task — this method does not drive that one.
      */
     void refit();
 
