@@ -143,7 +143,10 @@ void VulkanRenderer::createVulkanDevice(VkApplicationInfo *appInfo) {
 
   CALL_VK(vkCreateDevice(deviceInfo.gpuDevice, &deviceCreateInfo, nullptr,
                          &deviceInfo.device))
-  vkGetDeviceQueue(deviceInfo.device, 0, 0, &deviceInfo.queue);
+  // Use the queue family index we actually discovered above — hardcoding 0 here would return an
+  // invalid queue on devices where the graphics family isn't at index 0, and would also misalign
+  // vkQueueWaitIdle in recreateSwapChain (which assumes deviceInfo.queue belongs to this family).
+  vkGetDeviceQueue(deviceInfo.device, deviceInfo.queueFamilyIndex, 0, &deviceInfo.queue);
 }
 
 void VulkanRenderer::createSwapChain(uint32_t width, uint32_t height,
@@ -720,12 +723,14 @@ void VulkanRenderer::createOtherStaff() {
   CALL_VK(vkCreateSampler(deviceInfo.device, &sampler, nullptr,
                           &externalTextureInfo.sampler))
 
-  // Create a pool of command buffers to allocate command buffer from
+  // Create a pool of command buffers to allocate command buffer from. Match the queue family we
+  // actually discovered in createVulkanDevice — the command buffers allocated here will be
+  // submitted to deviceInfo.queue, which belongs to deviceInfo.queueFamilyIndex.
   VkCommandPoolCreateInfo cmdPoolCreateInfo{
           .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
           .pNext = nullptr,
           .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-          .queueFamilyIndex = 0,
+          .queueFamilyIndex = deviceInfo.queueFamilyIndex,
   };
   CALL_VK(vkCreateCommandPool(deviceInfo.device, &cmdPoolCreateInfo, nullptr,
                               &renderInfo.cmdPool))
