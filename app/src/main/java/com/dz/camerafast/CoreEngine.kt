@@ -74,6 +74,12 @@ class CoreEngine(
     nativeSetSurface(null, 0, 0)
     surface?.release()
     surface = null
+    // Drop the TextureView reference (the setter also detaches our listener) so a destroyed view
+    // can be GC'd along with its Context. Guard with an identity check so an unrelated callback
+    // from a stale SurfaceTexture wouldn't accidentally null out a freshly-attached TextureView.
+    if (textureView?.surfaceTexture === surfaceTexture) {
+      textureView = null
+    }
     return true
   }
 
