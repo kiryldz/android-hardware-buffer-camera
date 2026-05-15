@@ -43,15 +43,22 @@ void BaseRenderer::updateWindowSize(int width, int height) {
     return;
   }
   renderThread->scheduleTask([this] {
-    int width;
-    int height;
-    {
-      std::lock_guard<std::mutex> lock(resizeMutex);
-      resizeTaskScheduled = false;
-      width = pendingViewportWidth;
-      height = pendingViewportHeight;
-    }
-    if (viewportWidth != width || viewportHeight != height) {
+    // Keep resizeTaskScheduled = true for the whole duration of this task so producers running
+    // in parallel can't schedule a second task — they'll instead just update pending dims, which
+    // we'll pick up on the next iteration of this loop. The slot is released only after we
+    // observe a tick where pending == applied, guaranteeing no producer's latest size is lost.
+    while (true) {
+      int width;
+      int height;
+      {
+        std::lock_guard<std::mutex> lock(resizeMutex);
+        width = pendingViewportWidth;
+        height = pendingViewportHeight;
+        if (viewportWidth == width && viewportHeight == height) {
+          resizeTaskScheduled = false;
+          return;
+        }
+      }
       viewportWidth = width;
       viewportHeight = height;
       LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
