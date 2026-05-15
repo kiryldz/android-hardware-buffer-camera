@@ -117,7 +117,23 @@ void CoreEngine::nativeRefit(JNIEnv &env) {
 void CoreEngine::nativeDestroy(JNIEnv &env) {
   std::lock_guard<std::mutex> lock(coreEngineMutex);
   LOGI("Core engine destroy started");
+
+  if (renderer && aNativeWindow != nullptr) {
+    renderer->resetWindow();
+  }
+
   renderer.reset();
+
+  if (aNativeWindow != nullptr) {
+    ANativeWindow_release(aNativeWindow);
+    aNativeWindow = nullptr;
+  }
+
+  if (gpuBuffer != nullptr) {
+    AHardwareBuffer_release(gpuBuffer);
+    gpuBuffer = nullptr;
+  }
+
   LOGI("Core engine destroy passed");
 }
 
