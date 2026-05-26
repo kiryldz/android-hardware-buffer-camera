@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.compose.animation.core.animateFloatAsState
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.runtime.SideEffect
@@ -55,6 +57,7 @@ class CameraActivity : ComponentActivity() {
   @SuppressLint("NewApi")
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    enableEdgeToEdge()
     setContent {
       val cameraMode by remember {
         cameraModeState
@@ -125,7 +128,7 @@ class CameraActivity : ComponentActivity() {
         )
       }
 
-      Column {
+      Column(modifier = Modifier.safeDrawingPadding()) {
         Text(
           text = cameraMode.name,
           color = Color.White,
