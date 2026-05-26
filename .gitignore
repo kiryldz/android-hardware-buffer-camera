@@ -13,3 +13,4 @@
 .cxx
 **/build
 /.idea
+/.cache
