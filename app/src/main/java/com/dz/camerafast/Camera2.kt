@@ -9,6 +9,7 @@ import android.hardware.camera2.CameraCaptureSession.StateCallback
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
+import android.media.Image
 import android.media.ImageReader
 import android.os.Build
 import android.os.Handler
@@ -114,8 +115,8 @@ fun Camera2(
         cameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)!!
       imageReader.setOnImageAvailableListener(
         {
-          val image = it.acquireLatestImage()
-          image.hardwareBuffer?.let { buffer ->
+          val image: Image? = it.acquireLatestImage()
+          image?.hardwareBuffer?.let { buffer ->
             coreEngines.forEach { engine ->
               engine.sendCameraFrame(
                 buffer = buffer,
@@ -125,7 +126,7 @@ fun Camera2(
             }
             buffer.close()
           }
-          image.close()
+          image?.close()
         },
         cameraHandler
       )

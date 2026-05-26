@@ -1,25 +1,31 @@
 package com.dz.camerafast
 
-import android.graphics.PixelFormat
+import android.graphics.SurfaceTexture
 import android.hardware.HardwareBuffer
 import android.util.Log
 import android.view.Surface
-import android.view.SurfaceHolder
+import android.view.TextureView
 import androidx.annotation.Keep
 
 @Keep
 class CoreEngine(
   val renderingMode: RenderingMode,
-) : SurfaceHolder.Callback {
+) : TextureView.SurfaceTextureListener {
 
-  internal var surfaceHolder: SurfaceHolder? = null
+  private var surface: Surface? = null
+
+  internal var textureView: TextureView? = null
     set(value) {
-      // remove callback for previous camera preview view if needed
-      field?.removeCallback(this)
+      field?.surfaceTextureListener = null
       field = value
-      // we will use RGBA_8888 here and use same config in render thread
-      field?.setFormat(PixelFormat.RGBA_8888)
-      field?.addCallback(this)
+      field?.surfaceTextureListener = this
+      // If the TextureView is already available, the framework won't fire
+      // onSurfaceTextureAvailable — invoke it ourselves.
+      if (value?.isAvailable == true) {
+        value.surfaceTexture?.let { texture ->
+          onSurfaceTextureAvailable(texture, value.width, value.height)
+        }
+      }
     }
 
   init {
@@ -31,17 +37,45 @@ class CoreEngine(
     nativeSendCameraFrame(buffer, rotationDegrees, backCamera)
   }
 
-  override fun surfaceCreated(p0: SurfaceHolder) {
-    // do nothing
+  private var previousWeight: Float = 1.0f
+
+  /** Pushes the current preview weight; triggers a native refit at threshold crossings only. */
+  fun refit(weight: Float): Boolean {
+    val triggered = shouldRefit(previousWeight, weight)
+    previousWeight = weight
+    if (triggered) {
+      nativeRefit()
+    }
+    return triggered
   }
 
-  override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-    Log.i(TAG, "Surface changed ${holder.surface}, format $format, width $width, height $height")
-    nativeSetSurface(holder.surface, width, height)
+  override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+    Log.i(TAG, "Surface texture available, width $width, height $height")
+    // Release any stale Surface from a previous binding before overwriting the field.
+    surface?.release()
+    surface = Surface(surfaceTexture).also { nativeSetSurface(it, width, height) }
   }
 
-  override fun surfaceDestroyed(p0: SurfaceHolder) {
+  override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+    Log.i(TAG, "Surface texture size changed, width $width, height $height")
+    nativeUpdateWindowSize(width, height)
+  }
+
+  override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
     nativeSetSurface(null, 0, 0)
+    surface?.release()
+    surface = null
+    // Drop the TextureView reference so the destroyed view can be GC'd. Identity-guard against
+    // stale callbacks from an older SurfaceTexture.
+    if (textureView?.surfaceTexture === surfaceTexture) {
+      textureView = null
+    }
+    // true = let TextureView release the SurfaceTexture for us.
+    return true
+  }
+
+  override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {
+    // do nothing
   }
 
   fun destroy() {
@@ -55,11 +89,15 @@ class CoreEngine(
 
   private external fun nativeSetSurface(surface: Surface?, width: Int, height: Int)
 
+  private external fun nativeUpdateWindowSize(width: Int, height: Int)
+
   private external fun nativeSendCameraFrame(
     buffer: HardwareBuffer,
     rotationDegrees: Int,
     backCamera: Boolean
   )
+
+  private external fun nativeRefit()
 
   private external fun nativeDestroy()
 
@@ -109,6 +147,19 @@ class CoreEngine(
 
   private companion object {
     private const val TAG = "DzCoreKotlin"
+
+    private val REFIT_THRESHOLDS = floatArrayOf(0.1f, 0.5f)
+
+    private fun shouldRefit(prev: Float, curr: Float): Boolean {
+      for (threshold in REFIT_THRESHOLDS) {
+        val crossedUp = prev < threshold && curr >= threshold
+        val crossedDown = prev > threshold && curr <= threshold
+        if (crossedUp || crossedDown) return true
+      }
+      val settledAtZero = curr <= 0.0f && prev > 0.0f
+      val settledAtOne = curr >= 1.0f && prev < 1.0f
+      return settledAtZero || settledAtOne
+    }
 
     init {
       System.loadLibrary("native-engine")

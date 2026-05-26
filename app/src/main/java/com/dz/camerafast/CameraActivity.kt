@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Button
 import androidx.compose.material.Text
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -73,8 +74,7 @@ class CameraActivity : ComponentActivity() {
 
       val vulkanWeight by animateFloatAsState(
         targetValue = vulkanWeightValue,
-        // TODO increase duration and try make dynamic view resize less laggy
-        animationSpec = tween(durationMillis = 0),
+        animationSpec = tween(durationMillis = 1000),
         label = "Vulkan",
         finishedListener = { endValue ->
           displayMode = if (endValue == 1.0f) {
@@ -91,8 +91,7 @@ class CameraActivity : ComponentActivity() {
 
       val openGlWeight by animateFloatAsState(
         targetValue = openGlWeightValue,
-        // TODO increase duration and try make dynamic view resize less laggy
-        animationSpec = tween(durationMillis = 0),
+        animationSpec = tween(durationMillis = 1000),
         label = "OpenGL",
         finishedListener = { endValue ->
           displayMode = if (endValue == 1.0f) {
@@ -102,6 +101,13 @@ class CameraActivity : ComponentActivity() {
           }
         }
       )
+
+      SideEffect {
+        previewEngineList.find { it.renderingMode == RenderingMode.VULKAN }!!
+          .refit(vulkanWeight)
+        previewEngineList.find { it.renderingMode == RenderingMode.OPEN_GL_ES }!!
+          .refit(openGlWeight)
+      }
 
       if (cameraMode == CameraMode.CAMERA_X) {
         CameraX(
@@ -134,7 +140,7 @@ class CameraActivity : ComponentActivity() {
           Box(
             contentAlignment = Alignment.TopStart,
             modifier = Modifier
-                .weight(openGlWeight)
+                .weight(openGlWeight.coerceAtLeast(MIN_WEIGHT))
                 .fillMaxWidth()
           ) {
             CameraPreviewView(
@@ -142,7 +148,7 @@ class CameraActivity : ComponentActivity() {
               modifier = Modifier
                   .matchParentSize()
                   .clickable(enabled = displayMode == DisplayMode.BOTH) {
-                      vulkanWeightValue = 0.1f
+                      vulkanWeightValue = 0.0f
                   }
             )
             Text(
@@ -157,7 +163,7 @@ class CameraActivity : ComponentActivity() {
           Box(
             contentAlignment = Alignment.TopStart,
             modifier = Modifier
-                .weight(vulkanWeight)
+                .weight(vulkanWeight.coerceAtLeast(MIN_WEIGHT))
                 .fillMaxWidth()
           ) {
             CameraPreviewView(
@@ -165,7 +171,7 @@ class CameraActivity : ComponentActivity() {
               modifier = Modifier
                   .matchParentSize()
                   .clickable(enabled = displayMode == DisplayMode.BOTH) {
-                      openGlWeightValue = 0.1f
+                      openGlWeightValue = 0.0f
                   }
             )
             Text(
@@ -248,5 +254,8 @@ class CameraActivity : ComponentActivity() {
 
   internal companion object {
     internal const val TAG = "DzCamera"
+
+    // Modifier.weight requires a strictly positive value; floor the animated weight here.
+    private const val MIN_WEIGHT = 0.0001f
   }
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <mutex>
+
 #include <android/hardware_buffer.h>
 #include <android/hardware_buffer_jni.h>
 #include <android/native_window.h>
@@ -40,7 +42,9 @@ public:
             "initialize",
             "finalize",
             METHOD(&CoreEngine::nativeSetSurface, "nativeSetSurface"),
+            METHOD(&CoreEngine::nativeUpdateWindowSize, "nativeUpdateWindowSize"),
             METHOD(&CoreEngine::nativeSendCameraFrame, "nativeSendCameraFrame"),
+            METHOD(&CoreEngine::nativeRefit, "nativeRefit"),
             METHOD(&CoreEngine::nativeDestroy, "nativeDestroy")
     );
   }
@@ -54,11 +58,18 @@ public:
   void nativeSetSurface(JNIEnv &env, jni::Object <Surface> const &surface, jni::jint width,
                         jni::jint height);
 
+  void nativeUpdateWindowSize(JNIEnv &env, jni::jint width, jni::jint height);
+
   void nativeSendCameraFrame(JNIEnv &env, jni::Object <HardwareBuffer> const &buffer, jni::jint rotationDegrees, jni::jboolean backCamera);
+
+  void nativeRefit(JNIEnv &env);
 
   void nativeDestroy(JNIEnv &env);
 
 private:
+  // Serializes JNI entry points against nativeDestroy.
+  std::mutex coreEngineMutex;
+
   ANativeWindow *aNativeWindow;
   std::unique_ptr <BaseRenderer> renderer;
 

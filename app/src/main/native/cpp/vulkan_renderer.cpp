@@ -143,10 +143,11 @@ void VulkanRenderer::createVulkanDevice(VkApplicationInfo *appInfo) {
 
   CALL_VK(vkCreateDevice(deviceInfo.gpuDevice, &deviceCreateInfo, nullptr,
                          &deviceInfo.device))
-  vkGetDeviceQueue(deviceInfo.device, 0, 0, &deviceInfo.queue);
+  vkGetDeviceQueue(deviceInfo.device, deviceInfo.queueFamilyIndex, 0, &deviceInfo.queue);
 }
 
-void VulkanRenderer::createSwapChain(uint32_t width, uint32_t height) {
+void VulkanRenderer::createSwapChain(uint32_t width, uint32_t height,
+                                     VkSwapchainKHR oldSwapchain) {
   LOGI("->createSwapChain");
   // **********************************************************
   // Get the surface capabilities because:
@@ -203,7 +204,7 @@ void VulkanRenderer::createSwapChain(uint32_t width, uint32_t height) {
           .presentMode = VK_PRESENT_MODE_FIFO_KHR,
           // changed to true based on https://vulkan-tutorial.com/Drawing_a_triangle/Presentation/Swap_chain
           .clipped = VK_TRUE,
-          .oldSwapchain = VK_NULL_HANDLE,
+          .oldSwapchain = oldSwapchain,
   };
   CALL_VK(vkCreateSwapchainKHR(deviceInfo.device, &swapchainCreateInfo, nullptr,
                                &swapchainInfo.swapchain))
@@ -722,7 +723,7 @@ void VulkanRenderer::createOtherStaff() {
           .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
           .pNext = nullptr,
           .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-          .queueFamilyIndex = 0,
+          .queueFamilyIndex = deviceInfo.queueFamilyIndex,
   };
   CALL_VK(vkCreateCommandPool(deviceInfo.device, &cmdPoolCreateInfo, nullptr,
                               &renderInfo.cmdPool))
@@ -768,11 +769,14 @@ void VulkanRenderer::renderImpl() {
   auto result = vkAcquireNextImageKHR(deviceInfo.device, swapchainInfo.swapchain,
                                       UINT64_MAX, renderInfo.semaphore, VK_NULL_HANDLE,
                                       &nextIndex);
-  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-    LOGW("vkAcquireNextImageKHR returned %i; swapchain will be recreated", result);
-    cleanupSwapChain();
-    createSwapChain();
-    createFrameBuffersAndImages();
+  if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+    LOGW("vkAcquireNextImageKHR returned VK_ERROR_OUT_OF_DATE_KHR; recreating swapchain");
+    recreateSwapChain(0, 0);
+    return;
+  }
+  if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+    // nextIndex is undefined for non-success codes — dropping the frame.
+    LOGE("vkAcquireNextImageKHR returned fatal %i; dropping frame", result);
     return;
   }
   CALL_VK(vkResetFences(deviceInfo.device, 1, &renderInfo.fence))
@@ -801,7 +805,13 @@ void VulkanRenderer::renderImpl() {
           .pImageIndices = &nextIndex,
           .pResults = nullptr,
   };
-  vkQueuePresentKHR(deviceInfo.queue, &presentInfo);
+  const auto presentResult = vkQueuePresentKHR(deviceInfo.queue, &presentInfo);
+  if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
+    LOGW("vkQueuePresentKHR returned %i; recreating swapchain", presentResult);
+    recreateSwapChain(0, 0);
+  } else if (presentResult != VK_SUCCESS) {
+    LOGE("vkQueuePresentKHR returned fatal %i", presentResult);
+  }
 }
 
 void VulkanRenderer::createDescriptorSet() {
@@ -977,8 +987,10 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
 }
 
 void VulkanRenderer::recordCommandBuffer() {
+  // vkBeginCommandBuffer implicitly resets (pool flag VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+  // callers must ensure the buffers aren't in the Pending state — recreateSwapChain
+  // guarantees that via vkQueueWaitIdle.
   for (int bufferIndex = 0; bufferIndex < swapchainInfo.swapchainLength; bufferIndex++) {
-    // We start by creating and declare the "beginning" our command buffer
     VkCommandBufferBeginInfo cmdBufferBeginInfo{
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .pNext = nullptr,
@@ -1077,14 +1089,67 @@ void VulkanRenderer::createVertexBuffer() {
   vkUnmapMemory(deviceInfo.device, buffersInfo.vertexBufferMemory);
 }
 
-void VulkanRenderer::cleanupSwapChain() const {
+void VulkanRenderer::cleanupSwapChain() {
   LOGI("->cleanupSwapChain");
-  for (int i = 0; i < swapchainInfo.swapchainLength; ++i) {
+  if (swapchainInfo.swapchain == VK_NULL_HANDLE) {
+    return;
+  }
+  for (uint32_t i = 0; i < swapchainInfo.swapchainLength; ++i) {
     vkDestroyFramebuffer(deviceInfo.device, swapchainInfo.framebuffers[i], nullptr);
     vkDestroyImageView(deviceInfo.device, swapchainInfo.displayViews[i], nullptr);
   }
   vkDestroySwapchainKHR(deviceInfo.device, swapchainInfo.swapchain, nullptr);
+  delete[] swapchainInfo.framebuffers;
+  delete[] swapchainInfo.displayViews;
+  delete[] swapchainInfo.displayImages;
+  swapchainInfo.framebuffers = nullptr;
+  swapchainInfo.displayViews = nullptr;
+  swapchainInfo.displayImages = nullptr;
+  swapchainInfo.swapchain = VK_NULL_HANDLE;
+  swapchainInfo.swapchainLength = 0;
   LOGI("<-cleanupSwapChain");
+}
+
+void VulkanRenderer::recreateSwapChain(uint32_t width, uint32_t height) {
+  LOGI("->recreateSwapChain");
+  CALL_VK(vkQueueWaitIdle(deviceInfo.queue))
+
+  // Keep the old swapchain handle alive so we can hand it to vkCreateSwapchainKHR's oldSwapchain.
+  VkSwapchainKHR retiredSwapchain = swapchainInfo.swapchain;
+  for (uint32_t i = 0; i < swapchainInfo.swapchainLength; ++i) {
+    vkDestroyFramebuffer(deviceInfo.device, swapchainInfo.framebuffers[i], nullptr);
+    vkDestroyImageView(deviceInfo.device, swapchainInfo.displayViews[i], nullptr);
+  }
+  delete[] swapchainInfo.framebuffers;
+  delete[] swapchainInfo.displayViews;
+  delete[] swapchainInfo.displayImages;
+  swapchainInfo.framebuffers = nullptr;
+  swapchainInfo.displayViews = nullptr;
+  swapchainInfo.displayImages = nullptr;
+
+  createSwapChain(width, height, retiredSwapchain);
+  vkDestroySwapchainKHR(deviceInfo.device, retiredSwapchain, nullptr);
+  createFrameBuffersAndImages();
+  if (renderInfo.cmdBufferLen != swapchainInfo.swapchainLength) {
+    vkFreeCommandBuffers(deviceInfo.device, renderInfo.cmdPool,
+                         renderInfo.cmdBufferLen, renderInfo.cmdBuffer);
+    delete[] renderInfo.cmdBuffer;
+    renderInfo.cmdBufferLen = swapchainInfo.swapchainLength;
+    renderInfo.cmdBuffer = new VkCommandBuffer[swapchainInfo.swapchainLength];
+    VkCommandBufferAllocateInfo cmdBufferCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .pNext = nullptr,
+            .commandPool = renderInfo.cmdPool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = renderInfo.cmdBufferLen,
+    };
+    CALL_VK(vkAllocateCommandBuffers(deviceInfo.device, &cmdBufferCreateInfo,
+                                     renderInfo.cmdBuffer))
+  }
+  if (cameraInitialized) {
+    recordCommandBuffer();
+  }
+  LOGI("<-recreateSwapChain");
 }
 
 void VulkanRenderer::cleanup() {
@@ -1101,6 +1166,7 @@ void VulkanRenderer::cleanup() {
   vkDestroySemaphore(deviceInfo.device, renderInfo.semaphore, nullptr);
   vkDestroyFence(deviceInfo.device, renderInfo.fence, nullptr);
   vkDestroyCommandPool(deviceInfo.device, renderInfo.cmdPool, nullptr);
+  delete[] renderInfo.cmdBuffer;
   vkDestroySampler(deviceInfo.device, externalTextureInfo.sampler, nullptr);
   if (cameraInitialized) {
     vkDestroyImage(deviceInfo.device, externalTextureInfo.image, nullptr);

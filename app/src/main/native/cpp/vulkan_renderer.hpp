@@ -46,18 +46,22 @@ protected:
     return true;
   }
 
-  void onWindowSizeUpdated(int width, int height) override {
+  // Per-tick hook is a no-op for Vulkan; the swapchain re-fit happens in onRefit instead.
+  void onWindowSizeUpdated(int width, int height) override {}
+
+  void onRefit(int width, int height) override {
+    if (!deviceInfo.initialized) {
+      return;
+    }
     if (width != swapchainInfo.displaySize.width || height != swapchainInfo.displaySize.height) {
-      LOGI("->onWindowSizeUpdated");
-      CALL_VK(vkDeviceWaitIdle(deviceInfo.device))
-      cleanupSwapChain();
-      createSwapChain(width, height);
-      createFrameBuffersAndImages();
-      LOGI("<-onWindowSizeUpdated");
+      recreateSwapChain(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
     }
   }
 
   void onWindowDestroyed() override {
+    if (!deviceInfo.initialized) {
+      return;
+    }
     CALL_VK(vkDeviceWaitIdle(deviceInfo.device))
     cleanup();
     deviceInfo.initialized = false;
@@ -110,7 +114,7 @@ private:
 
   ///////// Structs and variables
 
-  bool cameraInitialized;
+  bool cameraInitialized = false;
 
   struct UniformBufferObject {
     glm::mat4 mvp;
@@ -128,7 +132,7 @@ private:
     VkSurfaceKHR surface;
     VkQueue queue;
   };
-  VulkanDeviceInfo deviceInfo;
+  VulkanDeviceInfo deviceInfo{};
 
   struct VulkanSwapchainInfo {
     VkSwapchainKHR swapchain;
@@ -142,7 +146,7 @@ private:
     VkImage* displayImages;
     VkImageView* displayViews;
   };
-  VulkanSwapchainInfo swapchainInfo;
+  VulkanSwapchainInfo swapchainInfo{};
 
   struct VulkanExternalTextureInfo {
     VkSampler sampler;
@@ -150,7 +154,7 @@ private:
     VkDeviceMemory memory;
     VkImageView view;
   };
-  VulkanExternalTextureInfo externalTextureInfo;
+  VulkanExternalTextureInfo externalTextureInfo{};
 
   struct VulkanBuffersInfo {
     VkBuffer vertexBuf;
@@ -159,7 +163,7 @@ private:
     VkDeviceMemory vertexBufferMemory;
     void* uniformBufferMapped;
   };
-  VulkanBuffersInfo buffersInfo;
+  VulkanBuffersInfo buffersInfo{};
 
   struct VulkanGfxPipelineInfo {
     VkDescriptorSetLayout dscLayout;
@@ -170,7 +174,7 @@ private:
     VkPipeline pipeline;
     VkWriteDescriptorSet* descWrites;
   };
-  VulkanGfxPipelineInfo gfxPipelineInfo;
+  VulkanGfxPipelineInfo gfxPipelineInfo{};
 
   struct VulkanRenderInfo {
     VkRenderPass renderPass;
@@ -180,13 +184,14 @@ private:
     VkSemaphore semaphore;
     VkFence fence;
   };
-  VulkanRenderInfo renderInfo;
+  VulkanRenderInfo renderInfo{};
 
   ///////// Create functions
 
   void createVulkanDevice(VkApplicationInfo* appInfo);
 
-  void createSwapChain(uint32_t width = 0, uint32_t height = 0);
+  void createSwapChain(uint32_t width = 0, uint32_t height = 0,
+                       VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
 
   void createRenderPass();
 
@@ -204,9 +209,13 @@ private:
 
   void recordCommandBuffer();
 
+  // Tear down + recreate the swapchain at (width, height) and re-record command buffers.
+  // Pass (0, 0) to use the current surface extent.
+  void recreateSwapChain(uint32_t width, uint32_t height);
+
   ////// Destroy functions
 
-  void cleanupSwapChain() const;
+  void cleanupSwapChain();
 
   void cleanup();
 

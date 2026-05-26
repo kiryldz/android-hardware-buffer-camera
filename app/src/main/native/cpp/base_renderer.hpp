@@ -27,6 +27,12 @@ public:
 
     void updateWindowSize(int width, int height);
 
+    /**
+     * Called at UI-driven key frames; runs the renderer's onRefit() on the render thread.
+     * Vulkan rebuilds its swapchain there; OpenGL keeps the default no-op.
+     */
+    void refit();
+
     void resetWindow();
 
     /**
@@ -42,7 +48,12 @@ protected:
 
     virtual void onWindowDestroyed() = 0;
 
+    // Per-tick lightweight hook (e.g. OpenGL glViewport). Heavy size-driven work belongs in
+    // onRefit instead.
     virtual void onWindowSizeUpdated(int width, int height) = 0;
+
+    // Fires only at UI-driven key frames via refit().
+    virtual void onRefit(int width, int height) {}
 
     virtual void hwBufferToTexture(AHardwareBuffer *buffer) = 0;
 
@@ -63,6 +74,7 @@ protected:
     int viewportHeight = -1;
     glm::mat4 mvp;
 
+
     /**
      * The mutex needed as worker camera thread produces buffers while render thread consumes them.
      */
@@ -75,6 +87,10 @@ private:
      */
     void updateMvp();
 
+    // Render-thread consumer that drains pendingViewport* into applied viewportWidth/Height.
+    // Re-scheduled by the task itself when newer pending values arrived mid-task.
+    void scheduleApplyPendingViewportSize();
+
     float bufferImageRatio = 1.0f;
     int rotationDegrees = 0;
     bool backCamera = false;
@@ -83,6 +99,12 @@ private:
     std::mutex mutex;
     std::condition_variable initCondition;
     std::condition_variable destroyCondition;
+
+    // Coalescing state for updateWindowSize; protected by resizeMutex.
+    std::mutex resizeMutex;
+    int pendingViewportWidth = -1;
+    int pendingViewportHeight = -1;
+    bool resizeTaskScheduled = false;
 };
 
 } // namespace android

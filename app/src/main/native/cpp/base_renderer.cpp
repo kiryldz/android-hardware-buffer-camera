@@ -31,17 +31,62 @@ void BaseRenderer::setWindow(ANativeWindow *window) {
 }
 
 void BaseRenderer::updateWindowSize(int width, int height) {
-  renderThread->scheduleTask([this, width, height] {
-    // calculate MVP on CPU, if we would know it will be updated more often -
-    // of course better move matrix calculation to GPU
-    if (viewportWidth != width || viewportHeight != height) {
-      viewportWidth = width;
-      viewportHeight = height;
-      LOGI("Update window size, width=%i, height=%i", viewportWidth, viewportHeight);
+  bool needsSchedule;
+  {
+    std::lock_guard<std::mutex> lock(resizeMutex);
+    pendingViewportWidth = width;
+    pendingViewportHeight = height;
+    needsSchedule = !resizeTaskScheduled;
+    resizeTaskScheduled = true;
+  }
+  if (needsSchedule) {
+    scheduleApplyPendingViewportSize();
+  }
+}
+
+void BaseRenderer::scheduleApplyPendingViewportSize() {
+  renderThread->scheduleTask([this] {
+    int width;
+    int height;
+    bool sizeChanged;
+    {
+      std::lock_guard<std::mutex> lock(resizeMutex);
+      width = pendingViewportWidth;
+      height = pendingViewportHeight;
+      sizeChanged = (viewportWidth != width || viewportHeight != height);
+      if (sizeChanged) {
+        viewportWidth = width;
+        viewportHeight = height;
+      }
+    }
+
+    if (sizeChanged) {
+      LOGI("Update window size, width=%i, height=%i", width, height);
       onWindowSizeUpdated(width, height);
     }
-    // update MVP in any case to cover the use-case of brining app to background and back
     updateMvp();
+
+    bool reschedule = false;
+    {
+      std::lock_guard<std::mutex> lock(resizeMutex);
+      if (pendingViewportWidth != viewportWidth || pendingViewportHeight != viewportHeight) {
+        reschedule = true;
+      } else {
+        resizeTaskScheduled = false;
+      }
+    }
+
+    if (reschedule) {
+      scheduleApplyPendingViewportSize();
+    }
+  });
+}
+
+void BaseRenderer::refit() {
+  renderThread->scheduleTask([this] {
+    if (viewportWidth > 0 && viewportHeight > 0) {
+      onRefit(viewportWidth, viewportHeight);
+    }
   });
 }
 
@@ -61,6 +106,11 @@ void BaseRenderer::resetWindow() {
 }
 
 void BaseRenderer::updateMvp() {
+  // Guard against 0-dim viewports — TextureView can fire callbacks with 0 height when weights
+  // animate to 0, and that would feed inf/NaN into the projection.
+  if (viewportWidth <= 0 || viewportHeight <= 0) {
+    return;
+  }
   float viewportRatio =
           static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
   float ratio = viewportRatio * bufferImageRatio;
