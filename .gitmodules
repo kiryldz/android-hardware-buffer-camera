@@ -4,3 +4,6 @@
 [submodule "vendor/jni.hpp"]
 	path = vendor/jni.hpp
 	url = git@github.com:mapbox/jni.hpp.git
+[submodule "vendor/android-skills"]
+	path = vendor/android-skills
+	url = https://github.com/android/skills
