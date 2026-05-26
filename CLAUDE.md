@@ -56,7 +56,7 @@ Section name constants live in two places that must stay in sync:
 Design decisions worth remembering:
 - **Cookie is an `Int`, not the sensor timestamp.** `android.os.Trace` cookies are 32-bit; sensor timestamps in nanoseconds overflow. A simple `AtomicInteger` counter avoids the collision risk that low-32-bit truncation would create.
 - **Superseded frames are deliberately dropped from `to_screen` / `e2e`.** When a newer frame's `hwBufferToTexture` overwrites `pendingPresentCookie` before Choreographer fires, the older frame's slices are left dangling — they won't appear in `slice` rows and won't pollute the latency distribution. By design.
-- **ATrace async APIs are API 29+; `minSdk` is 28.** `frame_trace.hpp` declares the symbols with `__attribute__((weak))`. On API 28 they resolve to `nullptr` and the helpers no-op cleanly; on 29+ the dynamic linker fills them in from `libandroid.so`.
+- **ATrace async APIs are API 29+; `minSdk` is 29 to match.** No weak-linking dance — `frame_trace.hpp` includes `<android/trace.h>` and calls `ATrace_beginAsyncSection` / `endAsyncSection` directly. If `minSdk` ever drops below 29 again, the helpers will need to come back as weak symbols.
 - **`-a com.dz.camerafast` is mandatory** when invoking `perfetto`. Without it, app-tag atrace sections (which is where these slices land) are filtered out and the trace processor returns zero rows. Both helper scripts always pass it; if you ever invoke `perfetto` by hand, don't forget.
 
 ## Tooling — how to actually use this

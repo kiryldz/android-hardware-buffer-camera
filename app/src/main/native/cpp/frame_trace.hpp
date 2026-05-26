@@ -2,22 +2,17 @@
 
 #include <cstdint>
 
+#include <android/trace.h>
+
 namespace engine {
 namespace android {
 
-// Weak-linked so the shared library still loads on API 28 (project minSdk).
-// On API 29+ the dynamic linker resolves these to the real ATrace functions in libandroid.so.
-extern "C" {
-__attribute__((weak)) void ATrace_beginAsyncSection(const char *sectionName, int32_t cookie);
-__attribute__((weak)) void ATrace_endAsyncSection(const char *sectionName, int32_t cookie);
-}
-
 inline void traceBeginAsync(const char *name, int32_t cookie) {
-  if (&ATrace_beginAsyncSection) ATrace_beginAsyncSection(name, cookie);
+  ATrace_beginAsyncSection(name, cookie);
 }
 
 inline void traceEndAsync(const char *name, int32_t cookie) {
-  if (&ATrace_endAsyncSection) ATrace_endAsyncSection(name, cookie);
+  ATrace_endAsyncSection(name, cookie);
 }
 
 // Stable section names — must match com.dz.camerafast.FrameTrace on the Kotlin side.
