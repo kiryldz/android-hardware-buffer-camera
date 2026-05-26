@@ -102,10 +102,6 @@ class CameraActivity : ComponentActivity() {
         }
       )
 
-      // Hand each engine its own preview weight on every recomposition (each animation frame
-      // produces one). CoreEngine.refit filters internally and only fires a JNI call at key
-      // frames (threshold crossings + endpoint settlement), so a 0 -> 1 grow gets a few re-fits
-      // along the way instead of presenting one stale tiny buffer the whole time.
       SideEffect {
         previewEngineList.find { it.renderingMode == RenderingMode.VULKAN }!!
           .refit(vulkanWeight)
@@ -144,8 +140,6 @@ class CameraActivity : ComponentActivity() {
           Box(
             contentAlignment = Alignment.TopStart,
             modifier = Modifier
-                // Modifier.weight requires a strictly positive value,
-                // so floor at a sub-pixel weight
                 .weight(openGlWeight.coerceAtLeast(MIN_WEIGHT))
                 .fillMaxWidth()
           ) {
@@ -261,10 +255,7 @@ class CameraActivity : ComponentActivity() {
   internal companion object {
     internal const val TAG = "DzCamera"
 
-    // Minimum weight applied to a shrinking preview Box. Modifier.weight requires a strictly
-    // positive value, so we coerce the animated weight to this sub-pixel floor — the Box's actual
-    // height rounds to 0px well before the animation reaches it, making the final removal
-    // (in finishedListener) imperceptible.
+    // Modifier.weight requires a strictly positive value; floor the animated weight here.
     private const val MIN_WEIGHT = 0.0001f
   }
 }

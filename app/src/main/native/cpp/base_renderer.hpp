@@ -28,16 +28,8 @@ public:
     void updateWindowSize(int width, int height);
 
     /**
-     * Re-fit the renderer's output to the current viewport size at a UI-driven key frame
-     * (threshold crossings, endpoint settlement). The filtering of which moments count as "key"
-     * lives on the Kotlin side, so every call into this method is expected to be meaningful.
-     *
-     * Drives the renderer's onRefit() hook on the render thread — Vulkan rebuilds its swapchain
-     * there; OpenGL doesn't override it because its per-tick glViewport in onWindowSizeUpdated
-     * already keeps the rasterization area in sync.
-     *
-     * Note: onWindowSizeUpdated is the SEPARATE per-tick hook that fires on every
-     * updateWindowSize task — this method does not drive that one.
+     * Called at UI-driven key frames; runs the renderer's onRefit() on the render thread.
+     * Vulkan rebuilds its swapchain there; OpenGL keeps the default no-op.
      */
     void refit();
 
@@ -56,20 +48,11 @@ protected:
 
     virtual void onWindowDestroyed() = 0;
 
-    /**
-     * Lightweight size update. Called from each scheduled updateWindowSize task on the render
-     * thread, with the LATEST observed dimensions. Note that updateWindowSize coalesces — a burst
-     * of surfaceTextureSizeChanged callbacks collapses into a single task that sees only the most
-     * recent (width, height), so intermediate sizes are skipped by design. Cheap operations
-     * belong here (e.g. OpenGL's glViewport); expensive ones (e.g. Vulkan swapchain rebuild)
-     * should leave this empty and react in onRefit instead.
-     */
+    // Per-tick lightweight hook (e.g. OpenGL glViewport). Heavy size-driven work belongs in
+    // onRefit instead.
     virtual void onWindowSizeUpdated(int width, int height) = 0;
 
-    /**
-     * Heavy refit hook, fired only at UI-driven key frames (see refit()). Default is no-op;
-     * Vulkan overrides to rebuild the swapchain at the current viewport size.
-     */
+    // Fires only at UI-driven key frames via refit().
     virtual void onRefit(int width, int height) {}
 
     virtual void hwBufferToTexture(AHardwareBuffer *buffer) = 0;
@@ -104,15 +87,9 @@ private:
      */
     void updateMvp();
 
-    /**
-     * Schedule the render-thread consumer task that drains the latest pendingViewport* into
-     * the applied viewportWidth/Height. Used by both updateWindowSize (initial schedule) and
-     * the consumer task itself (re-schedule when a newer pending value arrived mid-task) so the
-     * consumer body always re-reads pending under resizeMutex — never with a stale snapshot,
-     * and never via the producer entry that would clobber pending.
-     */
+    // Render-thread consumer that drains pendingViewport* into applied viewportWidth/Height.
+    // Re-scheduled by the task itself when newer pending values arrived mid-task.
     void scheduleApplyPendingViewportSize();
-
 
     float bufferImageRatio = 1.0f;
     int rotationDegrees = 0;
@@ -123,10 +100,7 @@ private:
     std::condition_variable initCondition;
     std::condition_variable destroyCondition;
 
-    // Coalescing state for updateWindowSize: layout animations can fire surfaceTextureSizeChanged
-    // at ~60Hz, and a queued backlog of per-tick work is what would make resize feel sluggish.
-    // Producers stash the latest requested size under resizeMutex and only schedule a render-thread
-    // task if one is not already in flight; the task reads whichever size is current when it runs.
+    // Coalescing state for updateWindowSize; protected by resizeMutex.
     std::mutex resizeMutex;
     int pendingViewportWidth = -1;
     int pendingViewportHeight = -1;

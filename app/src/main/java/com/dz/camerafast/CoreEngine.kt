@@ -16,13 +16,11 @@ class CoreEngine(
 
   internal var textureView: TextureView? = null
     set(value) {
-      // remove listener for previous camera preview view if needed
       field?.surfaceTextureListener = null
       field = value
       field?.surfaceTextureListener = this
-      // If the TextureView already has a SurfaceTexture (common when the view is re-attached or
-      // the listener is set after layout), the framework won't fire onSurfaceTextureAvailable —
-      // do it ourselves so the native surface still gets set up.
+      // If the TextureView is already available, the framework won't fire
+      // onSurfaceTextureAvailable — invoke it ourselves.
       if (value?.isAvailable == true) {
         value.surfaceTexture?.let { texture ->
           onSurfaceTextureAvailable(texture, value.width, value.height)
@@ -41,15 +39,7 @@ class CoreEngine(
 
   private var previousWeight: Float = 1.0f
 
-  /**
-   * Called by the UI on every preview-weight change (e.g. from a Compose SideEffect over an
-   * animateFloatAsState value). When the transition crosses one of [REFIT_THRESHOLDS] or settles
-   * at an endpoint (0.0 / 1.0), the renderer is asked to re-fit its output to the current view
-   * bounds — that's a swapchain rebuild for Vulkan and a glViewport for OpenGL. Intermediate
-   * animation ticks are filtered out here so the JNI layer only sees the values worth reacting to.
-   *
-   * @return true if this transition actually triggered a native refit.
-   */
+  /** Pushes the current preview weight; triggers a native refit at threshold crossings only. */
   fun refit(weight: Float): Boolean {
     val triggered = shouldRefit(previousWeight, weight)
     previousWeight = weight
@@ -61,6 +51,7 @@ class CoreEngine(
 
   override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
     Log.i(TAG, "Surface texture available, width $width, height $height")
+    // Release any stale Surface from a previous binding before overwriting the field.
     surface?.release()
     surface = Surface(surfaceTexture).also { nativeSetSurface(it, width, height) }
   }
@@ -74,16 +65,12 @@ class CoreEngine(
     nativeSetSurface(null, 0, 0)
     surface?.release()
     surface = null
-    // Drop the TextureView reference (the setter also detaches our listener) so a destroyed view
-    // can be GC'd along with its Context. Guard with an identity check so an unrelated callback
-    // from a stale SurfaceTexture wouldn't accidentally null out a freshly-attached TextureView.
+    // Drop the TextureView reference so the destroyed view can be GC'd. Identity-guard against
+    // stale callbacks from an older SurfaceTexture.
     if (textureView?.surfaceTexture === surfaceTexture) {
       textureView = null
     }
-    // Returning true tells TextureView to release the SurfaceTexture itself (per the contract on
-    // SurfaceTextureListener.onSurfaceTextureDestroyed: true = framework releases, false = we
-    // take ownership and must call SurfaceTexture.release() ourselves). We don't keep the
-    // SurfaceTexture beyond this callback, so framework-side release is correct.
+    // true = let TextureView release the SurfaceTexture for us.
     return true
   }
 
@@ -161,10 +148,6 @@ class CoreEngine(
   private companion object {
     private const val TAG = "DzCoreKotlin"
 
-    // Weight values at which the renderer should re-fit (Vulkan rebuilds its swapchain, OpenGL
-    // runs glViewport). Crossings of these thresholds — plus endpoint settlement at 0.0 / 1.0 —
-    // are the only events forwarded to JNI. Intermediate animation ticks are dropped client-side
-    // so the native layer doesn't have to track previous values or implement crossing detection.
     private val REFIT_THRESHOLDS = floatArrayOf(0.1f, 0.5f)
 
     private fun shouldRefit(prev: Float, curr: Float): Boolean {
@@ -173,10 +156,6 @@ class CoreEngine(
         val crossedDown = prev > threshold && curr <= threshold
         if (crossedUp || crossedDown) return true
       }
-      // Endpoint settlement: detect transitions INTO the rest region rather than equality with
-      // exactly 0f / 1f. animateFloatAsState with tween lands precisely on the target today, but
-      // spring or other animation specs can overshoot or settle slightly past — using <= 0f /
-      // >= 1f keeps the final refit reliable across animation-spec changes.
       val settledAtZero = curr <= 0.0f && prev > 0.0f
       val settledAtOne = curr >= 1.0f && prev < 1.0f
       return settledAtZero || settledAtOne

@@ -143,9 +143,6 @@ void VulkanRenderer::createVulkanDevice(VkApplicationInfo *appInfo) {
 
   CALL_VK(vkCreateDevice(deviceInfo.gpuDevice, &deviceCreateInfo, nullptr,
                          &deviceInfo.device))
-  // Use the queue family index we actually discovered above — hardcoding 0 here would return an
-  // invalid queue on devices where the graphics family isn't at index 0, and would also misalign
-  // vkQueueWaitIdle in recreateSwapChain (which assumes deviceInfo.queue belongs to this family).
   vkGetDeviceQueue(deviceInfo.device, deviceInfo.queueFamilyIndex, 0, &deviceInfo.queue);
 }
 
@@ -207,8 +204,6 @@ void VulkanRenderer::createSwapChain(uint32_t width, uint32_t height,
           .presentMode = VK_PRESENT_MODE_FIFO_KHR,
           // changed to true based on https://vulkan-tutorial.com/Drawing_a_triangle/Presentation/Swap_chain
           .clipped = VK_TRUE,
-          // Hand off to the driver so it can reuse internal allocations from the previous chain.
-          // Without this, every resize tick triggers a full driver-side reallocation.
           .oldSwapchain = oldSwapchain,
   };
   CALL_VK(vkCreateSwapchainKHR(deviceInfo.device, &swapchainCreateInfo, nullptr,
@@ -723,9 +718,7 @@ void VulkanRenderer::createOtherStaff() {
   CALL_VK(vkCreateSampler(deviceInfo.device, &sampler, nullptr,
                           &externalTextureInfo.sampler))
 
-  // Create a pool of command buffers to allocate command buffer from. Match the queue family we
-  // actually discovered in createVulkanDevice — the command buffers allocated here will be
-  // submitted to deviceInfo.queue, which belongs to deviceInfo.queueFamilyIndex.
+  // Create a pool of command buffers to allocate command buffer from
   VkCommandPoolCreateInfo cmdPoolCreateInfo{
           .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
           .pNext = nullptr,
@@ -777,18 +770,12 @@ void VulkanRenderer::renderImpl() {
                                       UINT64_MAX, renderInfo.semaphore, VK_NULL_HANDLE,
                                       &nextIndex);
   if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-    // The surface has changed in a way that makes the swapchain unusable. The semaphore is left
-    // unsignaled in this case (per spec), so we can safely reuse it after recreating the swapchain.
-    // VK_SUBOPTIMAL_KHR is intentionally NOT routed here: acquisition succeeded, so we render
-    // this frame and let the next acquire trigger recreation if the surface keeps drifting.
     LOGW("vkAcquireNextImageKHR returned VK_ERROR_OUT_OF_DATE_KHR; recreating swapchain");
     recreateSwapChain(0, 0);
     return;
   }
   if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-    // Anything else (VK_ERROR_SURFACE_LOST_KHR, VK_ERROR_DEVICE_LOST, …) means nextIndex is not
-    // valid — submitting/presenting with it is UB. Skip the frame; the next render iteration
-    // will retry. CALL_VK on a fatal code is not used because we don't want to abort the looper.
+    // nextIndex is undefined for non-success codes — dropping the frame.
     LOGE("vkAcquireNextImageKHR returned fatal %i; dropping frame", result);
     return;
   }
@@ -819,11 +806,6 @@ void VulkanRenderer::renderImpl() {
           .pResults = nullptr,
   };
   const auto presentResult = vkQueuePresentKHR(deviceInfo.queue, &presentInfo);
-  // vkQueuePresentKHR can also signal that the swapchain is out of date or suboptimal — e.g.
-  // when the surface size changes from under us. Acquire alone is not enough; we have to react
-  // here too, otherwise we'd keep presenting against a stale swapchain. Any other non-SUCCESS
-  // return (e.g. VK_ERROR_SURFACE_LOST_KHR, VK_ERROR_DEVICE_LOST) is fatal for this surface —
-  // log it loudly so it's visible in logcat rather than silently dropping the failure.
   if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
     LOGW("vkQueuePresentKHR returned %i; recreating swapchain", presentResult);
     recreateSwapChain(0, 0);
@@ -1005,13 +987,9 @@ void VulkanRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
 }
 
 void VulkanRenderer::recordCommandBuffer() {
-  // This function may be called more than once per command buffer (e.g. from recreateSwapChain
-  // after the framebuffers have been rebuilt). The pool is created with
-  // VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT (see createOtherStaff), so the call to
-  // vkBeginCommandBuffer below implicitly resets each buffer from Executable -> Initial — no
-  // explicit vkResetCommandBuffer is required. Callers must ensure the buffers are not in the
-  // Pending state (already in flight on the GPU); recreateSwapChain handles that with
-  // vkQueueWaitIdle before getting here.
+  // vkBeginCommandBuffer implicitly resets (pool flag VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+  // callers must ensure the buffers aren't in the Pending state — recreateSwapChain
+  // guarantees that via vkQueueWaitIdle.
   for (int bufferIndex = 0; bufferIndex < swapchainInfo.swapchainLength; bufferIndex++) {
     VkCommandBufferBeginInfo cmdBufferBeginInfo{
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1113,8 +1091,6 @@ void VulkanRenderer::createVertexBuffer() {
 
 void VulkanRenderer::cleanupSwapChain() {
   LOGI("->cleanupSwapChain");
-  // Guard against a no-op double-call: if the swapchain handle is already gone, the per-image
-  // arrays were freed in the previous call and swapchainLength may still be non-zero.
   if (swapchainInfo.swapchain == VK_NULL_HANDLE) {
     return;
   }
@@ -1136,13 +1112,9 @@ void VulkanRenderer::cleanupSwapChain() {
 
 void VulkanRenderer::recreateSwapChain(uint32_t width, uint32_t height) {
   LOGI("->recreateSwapChain");
-  // We only ever submit and present on this single queue, so waiting on it is sufficient — much
-  // cheaper than vkDeviceWaitIdle, which serializes every queue on the device.
   CALL_VK(vkQueueWaitIdle(deviceInfo.queue))
 
-  // Tear down resources that reference the old swapchain images (framebuffers + image views), but
-  // keep the old swapchain handle alive so we can pass it as oldSwapchain to the new one — this
-  // lets the driver retire it gracefully instead of reallocating from scratch.
+  // Keep the old swapchain handle alive so we can hand it to vkCreateSwapchainKHR's oldSwapchain.
   VkSwapchainKHR retiredSwapchain = swapchainInfo.swapchain;
   for (uint32_t i = 0; i < swapchainInfo.swapchainLength; ++i) {
     vkDestroyFramebuffer(deviceInfo.device, swapchainInfo.framebuffers[i], nullptr);
@@ -1158,8 +1130,6 @@ void VulkanRenderer::recreateSwapChain(uint32_t width, uint32_t height) {
   createSwapChain(width, height, retiredSwapchain);
   vkDestroySwapchainKHR(deviceInfo.device, retiredSwapchain, nullptr);
   createFrameBuffersAndImages();
-  // The new swapchain may have a different image count than the old one — reallocate the command
-  // buffer storage so we have exactly one primary command buffer per framebuffer.
   if (renderInfo.cmdBufferLen != swapchainInfo.swapchainLength) {
     vkFreeCommandBuffers(deviceInfo.device, renderInfo.cmdPool,
                          renderInfo.cmdBufferLen, renderInfo.cmdBuffer);
@@ -1176,8 +1146,6 @@ void VulkanRenderer::recreateSwapChain(uint32_t width, uint32_t height) {
     CALL_VK(vkAllocateCommandBuffers(deviceInfo.device, &cmdBufferCreateInfo,
                                      renderInfo.cmdBuffer))
   }
-  // Re-record so render() does not submit a command buffer that references destroyed framebuffers.
-  // Skipped when there is no camera frame yet — the first hwBufferToTexture() will record then.
   if (cameraInitialized) {
     recordCommandBuffer();
   }

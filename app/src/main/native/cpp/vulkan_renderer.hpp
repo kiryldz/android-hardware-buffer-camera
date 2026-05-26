@@ -46,15 +46,10 @@ protected:
     return true;
   }
 
-  void onWindowSizeUpdated(int width, int height) override {
-    // Intentionally a no-op for Vulkan. Per-tick layout changes during an animation only update
-    // the MVP via BaseRenderer; the swapchain re-fit is deferred to UI-driven key frames in
-    // onRefit() so we don't pay a full rebuild for every frame of an animation.
-  }
+  // Per-tick hook is a no-op for Vulkan; the swapchain re-fit happens in onRefit instead.
+  void onWindowSizeUpdated(int width, int height) override {}
 
   void onRefit(int width, int height) override {
-    // Vulkan globals only exist between onWindowCreated and onWindowDestroyed; refit() can be
-    // invoked outside that window so guard before dereferencing any Vulkan handle.
     if (!deviceInfo.initialized) {
       return;
     }
@@ -64,9 +59,6 @@ protected:
   }
 
   void onWindowDestroyed() override {
-    // If onWindowCreated failed (e.g. InitVulkan returned false) we can still be invoked by
-    // BaseRenderer::resetWindow during teardown. In that case deviceInfo.device is VK_NULL_HANDLE
-    // (value-initialized) and vkDeviceWaitIdle on it would crash — bail out cleanly.
     if (!deviceInfo.initialized) {
       return;
     }
@@ -217,13 +209,8 @@ private:
 
   void recordCommandBuffer();
 
-  /**
-   * Drain the graphics/present queue, tear down the swapchain-dependent objects, recreate them
-   * for the new surface size, and re-record command buffers so they no longer reference
-   * destroyed framebuffers. Uses vkQueueWaitIdle on the single queue we submit to (cheaper than
-   * vkDeviceWaitIdle, sufficient because all swapchain-related work goes through that queue).
-   * Pass (0, 0) to use the current surface extent (recovery path from VK_ERROR_OUT_OF_DATE_KHR).
-   */
+  // Tear down + recreate the swapchain at (width, height) and re-record command buffers.
+  // Pass (0, 0) to use the current surface extent.
   void recreateSwapChain(uint32_t width, uint32_t height);
 
   ////// Destroy functions

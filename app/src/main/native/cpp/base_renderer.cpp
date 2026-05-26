@@ -50,10 +50,6 @@ void BaseRenderer::scheduleApplyPendingViewportSize() {
     int height;
     bool sizeChanged;
     {
-      // Process at most one pending size per scheduled task so the render thread yields back
-      // to the looper between resize ticks instead of draining an arbitrarily long animation
-      // inside a single callback. Producers still coalesce naturally by updating the pending
-      // dimensions under the same lock.
       std::lock_guard<std::mutex> lock(resizeMutex);
       width = pendingViewportWidth;
       height = pendingViewportHeight;
@@ -64,28 +60,14 @@ void BaseRenderer::scheduleApplyPendingViewportSize() {
       }
     }
 
-    if (!sizeChanged) {
-      // Refresh MVP even when the size was unchanged: producers (e.g. surface re-creation on
-      // background → foreground) can re-fire updateWindowSize with the same dimensions, and the
-      // rest of the renderer relies on the MVP being current.
-      updateMvp();
-    } else {
+    if (sizeChanged) {
       LOGI("Update window size, width=%i, height=%i", width, height);
-      // Per-tick lightweight hook — OpenGL's glViewport must run on every layout tick or the
-      // aspect ratio of rendered content goes wrong during a resize. Heavy size-driven work
-      // (Vulkan swapchain rebuild) is gated by onRefit() instead.
       onWindowSizeUpdated(width, height);
-      // Refresh MVP for this applied size before yielding back to the looper. Otherwise the
-      // projection / aspect ratio would stay stale across the animation: OpenGL's glViewport
-      // would track the current viewport but the uMvpMatrix (and Vulkan's UBO) would not.
-      updateMvp();
     }
+    updateMvp();
 
     bool reschedule = false;
     {
-      // If a producer updated the pending size while this task was running, keep the scheduled
-      // slot claimed and post a fresh task so the looper can interleave other render-thread work
-      // before we apply the newer size. Otherwise release the slot.
       std::lock_guard<std::mutex> lock(resizeMutex);
       if (pendingViewportWidth != viewportWidth || pendingViewportHeight != viewportHeight) {
         reschedule = true;
@@ -95,9 +77,6 @@ void BaseRenderer::scheduleApplyPendingViewportSize() {
     }
 
     if (reschedule) {
-      // Re-post the same consumer body — NOT the producer entry. The next iteration will read
-      // pendingViewport* fresh under resizeMutex, so we can't ship a stale snapshot of pending
-      // dims and we can't clobber a newer producer write by re-entering through updateWindowSize.
       scheduleApplyPendingViewportSize();
     }
   });
@@ -127,6 +106,8 @@ void BaseRenderer::resetWindow() {
 }
 
 void BaseRenderer::updateMvp() {
+  // Guard against 0-dim viewports — TextureView can fire callbacks with 0 height when weights
+  // animate to 0, and that would feed inf/NaN into the projection.
   if (viewportWidth <= 0 || viewportHeight <= 0) {
     return;
   }

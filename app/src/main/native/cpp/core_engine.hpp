@@ -67,10 +67,7 @@ public:
   void nativeDestroy(JNIEnv &env);
 
 private:
-  // Serializes all JNI entry points against nativeDestroy. Native methods can be invoked from
-  // the Android main thread (surface / size / refit), the camera worker thread (frame upload)
-  // and the JVM finalizer thread (destroy) concurrently. Without this, reading `renderer` on
-  // one thread while `nativeDestroy` resets it on another is a C++ data race / UB.
+  // Serializes JNI entry points against nativeDestroy.
   std::mutex coreEngineMutex;
 
   ANativeWindow *aNativeWindow;
