@@ -1,5 +1,7 @@
 #include "base_renderer.hpp"
 
+#include "frame_trace.hpp"
+
 namespace engine {
 namespace android {
 
@@ -143,10 +145,13 @@ void BaseRenderer::updateMvp() {
 }
 
 void BaseRenderer::processCameraFrame(AHardwareBuffer *aHardwareBuffer, int rotationDegrees_,
-                                      bool backCamera_) {
+                                      bool backCamera_, int32_t frameId) {
+  traceEndAsync(frameToNativeSectionName(), frameId);
+  traceBeginAsync(frameNativeProcSectionName(), frameId);
+
   AHardwareBuffer_acquire(aHardwareBuffer);
   LOGI("Buffer %p acquired by %s renderer" , aHardwareBuffer, this->renderingModeName());
-  renderThread->scheduleTask([aHardwareBuffer, rotationDegrees_, backCamera_, this] {
+  renderThread->scheduleTask([aHardwareBuffer, rotationDegrees_, backCamera_, frameId, this] {
     AHardwareBuffer_Desc description;
     AHardwareBuffer_describe(aHardwareBuffer, &description);
     const auto bufferImageRatio_ =
@@ -169,7 +174,16 @@ void BaseRenderer::processCameraFrame(AHardwareBuffer *aHardwareBuffer, int rota
     AHardwareBuffer_release(aHardwareBuffer);
     LOGI("Buffer %p released by %s renderer" , aHardwareBuffer, this->renderingModeName());
     bufferMutex.unlock();
-    // post choreographer callback as we will need to render this texture
+
+    traceEndAsync(frameNativeProcSectionName(), frameId);
+    traceBeginAsync(frameToScreenSectionName(), frameId);
+    if (pendingPresentFrameId != kNoPendingFrame) {
+      traceEndAsync(frameToScreenSectionName(), pendingPresentFrameId);
+      traceEndAsync(frameE2ESectionName(), pendingPresentFrameId);
+      traceSetCounter(droppedFramesCounterName(), ++droppedFrames);
+    }
+    pendingPresentFrameId = frameId;
+
     postChoreographerCallback();
   });
 }

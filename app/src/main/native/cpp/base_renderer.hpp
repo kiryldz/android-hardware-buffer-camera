@@ -21,7 +21,7 @@ class BaseRenderer {
 public:
     BaseRenderer();
 
-    ~BaseRenderer();
+    virtual ~BaseRenderer();
 
     void setWindow(ANativeWindow *window);
 
@@ -39,10 +39,23 @@ public:
      * Always called from camera worker thread - feed new camera buffer.
      * @param aHardwareBuffer
      */
-    void processCameraFrame(AHardwareBuffer *aHardwareBuffer, int rotationDegrees_, bool backCamera_);
+    void processCameraFrame(AHardwareBuffer *aHardwareBuffer, int rotationDegrees_, bool backCamera_,
+                            int32_t frameId);
 
 protected:
     virtual const char *renderingModeName() = 0;
+
+    virtual const char *frameToNativeSectionName() const = 0;
+    virtual const char *frameNativeProcSectionName() const = 0;
+    virtual const char *frameToScreenSectionName() const = 0;
+    virtual const char *frameE2ESectionName() const = 0;
+    virtual const char *droppedFramesCounterName() const = 0;
+
+    static constexpr int32_t kNoPendingFrame = -1;
+
+    // Render-thread-only; no atomic needed.
+    int32_t pendingPresentFrameId = kNoPendingFrame;
+    int64_t droppedFrames = 0;
 
     virtual bool onWindowCreated() = 0;
 

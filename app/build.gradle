@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId "com.dz.camerafast"
-        minSdk 28
+        minSdk 29
         targetSdk 35
         versionCode 1
         versionName "1.0"
@@ -19,12 +19,13 @@ android {
     ndkVersion = '25.1.8937393'
     buildTypes {
         release {
+            signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             ndk {
                 externalNativeBuild {
                     cmake.arguments '-DANDROID_STL=c++_static',
-                            '-DANDROID_PLATFORM=android-28',
+                            '-DANDROID_PLATFORM=android-29',
                             '-DANDROID_TOOLCHAIN=clang',
                             '-DCMAKE_BUILD_TYPE=Release'
                 }
@@ -34,7 +35,7 @@ android {
             ndk {
                 externalNativeBuild {
                     cmake.arguments '-DANDROID_STL=c++_static',
-                            '-DANDROID_PLATFORM=android-28',
+                            '-DANDROID_PLATFORM=android-29',
                             '-DANDROID_TOOLCHAIN=clang',
                             '-DCMAKE_BUILD_TYPE=Debug'
                 }

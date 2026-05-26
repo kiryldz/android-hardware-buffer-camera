@@ -246,9 +246,11 @@ void OpenGLRenderer::destroyEgl() {
 }
 
 void OpenGLRenderer::renderImpl() {
+  traceBeginSync(traceNames::FRAME_RENDER_GL);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   // no actual camera drawing to do if first hardware buffer was not described and loaded to ext texture
   if (!hardwareBufferDescribed) {
+    traceEndSync();
     if (!eglSwapBuffers(eglDisplay, eglSurface)) {
       LOGE("eglSwapBuffers returned error %d", eglGetError());
     }
@@ -283,10 +285,16 @@ void OpenGLRenderer::renderImpl() {
   glDisableVertexAttribArray(1);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glUseProgram(0);
+  traceEndSync();
   if (!eglSwapBuffers(eglDisplay, eglSurface)) {
     LOGE("eglSwapBuffers returned error %d", eglGetError());
   } else {
     LOGI("Swapped buffers!");
+    if (pendingPresentFrameId != kNoPendingFrame) {
+      traceEndAsync(frameToScreenSectionName(), pendingPresentFrameId);
+      traceEndAsync(frameE2ESectionName(), pendingPresentFrameId);
+      pendingPresentFrameId = kNoPendingFrame;
+    }
   }
 }
 
@@ -295,8 +303,6 @@ void OpenGLRenderer::hwBufferToTexture(AHardwareBuffer *buffer) {
   if (!eglPrepared) {
     return;
   }
-  // first thing post another doFrame callback as we will need to render this texture
-  AChoreographer_postFrameCallback(aChoreographer, doFrame, this);
   static EGLint attrs[] = {EGL_NONE};
   EGLImageKHR image = eglCreateImageKHR(
           eglDisplay,
