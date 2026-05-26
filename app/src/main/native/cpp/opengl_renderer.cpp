@@ -290,10 +290,10 @@ void OpenGLRenderer::renderImpl() {
     LOGE("eglSwapBuffers returned error %d", eglGetError());
   } else {
     LOGI("Swapped buffers!");
-    if (pendingPresentCookie != -1) {
-      traceEndAsync(frameToScreenSectionName(), pendingPresentCookie);
-      traceEndAsync(frameE2ESectionName(), pendingPresentCookie);
-      pendingPresentCookie = -1;
+    if (pendingPresentFrameId != kNoPendingFrame) {
+      traceEndAsync(frameToScreenSectionName(), pendingPresentFrameId);
+      traceEndAsync(frameE2ESectionName(), pendingPresentFrameId);
+      pendingPresentFrameId = kNoPendingFrame;
     }
   }
 }

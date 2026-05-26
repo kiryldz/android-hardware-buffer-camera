@@ -42,8 +42,6 @@ constexpr const char *FRAME_E2E_GL = "dz.frame_e2e.gl";
 constexpr const char *FRAME_E2E_VK = "dz.frame_e2e.vk";
 constexpr const char *DROPPED_FRAMES_GL = "dz.dropped_frames.gl";
 constexpr const char *DROPPED_FRAMES_VK = "dz.dropped_frames.vk";
-// Inner sync slice covering only the renderImpl work (draw+swap/present), so
-// frame_to_screen - frame_render approximates the Choreographer/vsync wait.
 constexpr const char *FRAME_RENDER_GL = "dz.frame_render.gl";
 constexpr const char *FRAME_RENDER_VK = "dz.frame_render.vk";
 } // namespace traceNames
@@ -57,7 +55,6 @@ public:
     jni::RegisterNatives(env, *jni::Class<FrameTrace>::Find(env),
             STATIC_METHOD(&FrameTrace::nextFrameId, "nextFrameId"),
             STATIC_METHOD(&FrameTrace::traceBeginAsync, "traceBeginAsync"),
-            STATIC_METHOD(&FrameTrace::traceEndAsync, "traceEndAsync"),
             STATIC_METHOD(&FrameTrace::frameE2EGlName, "frameE2EGlName"),
             STATIC_METHOD(&FrameTrace::frameE2EVkName, "frameE2EVkName"),
             STATIC_METHOD(&FrameTrace::frameToNativeGlName, "frameToNativeGlName"),
@@ -67,7 +64,6 @@ public:
 
   static jni::jint nextFrameId(jni::JNIEnv &env, jni::Class<FrameTrace> &);
   static void traceBeginAsync(jni::JNIEnv &env, jni::Class<FrameTrace> &, const jni::String &name, jni::jint frameId);
-  static void traceEndAsync(jni::JNIEnv &env, jni::Class<FrameTrace> &, const jni::String &name, jni::jint frameId);
   static jni::Local<jni::String> frameE2EGlName(jni::JNIEnv &env, jni::Class<FrameTrace> &);
   static jni::Local<jni::String> frameE2EVkName(jni::JNIEnv &env, jni::Class<FrameTrace> &);
   static jni::Local<jni::String> frameToNativeGlName(jni::JNIEnv &env, jni::Class<FrameTrace> &);

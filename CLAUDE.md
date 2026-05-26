@@ -37,7 +37,7 @@ Key files:
 - `app/src/main/java/com/dz/camerafast/CameraX.kt`, `Camera2.kt` — analyzer entry points.
 - `app/src/main/java/com/dz/camerafast/CoreEngine.kt` — Kotlin-side JNI surface + `TextureView.SurfaceTextureListener`.
 - `app/src/main/native/cpp/core_engine.{hpp,cpp}` — JNI peer; holds the renderer and the `ANativeWindow`.
-- `app/src/main/native/cpp/base_renderer.{hpp,cpp}` — render-thread Looper, frame-task scheduling, viewport/MVP coalescing, the `pendingPresentCookie` interlock.
+- `app/src/main/native/cpp/base_renderer.{hpp,cpp}` — render-thread Looper, frame-task scheduling, viewport/MVP coalescing, the `pendingPresentFrameId` interlock.
 - `app/src/main/native/cpp/{opengl,vulkan}_renderer.{hpp,cpp}` — backend-specific code; the only place EGL/GL or Vulkan symbols are touched.
 
 The CPU fallback in `nativeSendCameraFrame` exists because **CameraX**'s `ImageAnalysis` delivers HW buffers with `USAGE_CPU_*` flags rather than `USAGE_GPU_SAMPLED_IMAGE`. We re-allocate a GPU buffer once, `memcpy` into it each frame (drops the engine mutex during the slow memcpy so main-thread JNI calls aren't blocked), then hand it to the renderer. Camera2 with `ImageFormat.PRIVATE` + `USAGE_GPU_SAMPLED_IMAGE` skips that copy entirely — that's the point of supporting both APIs.
@@ -133,5 +133,5 @@ Slice counts are deterministic to within ±1 per 10 s window: ~298 frames per re
 ## Other tooling worth knowing about
 
 - `vendor/android-skills/` — Google's official AI-optimized SKILL.md files for Android dev (Perfetto SQL, edge-to-edge, AGP upgrades, R8 analyzer, Macrobenchmark testing-setup, etc.). Browse `vendor/android-skills/<topic>/<skill>/SKILL.md` rather than guessing — every skill there has a precise scope statement at the top.
-- `vendor/jni.hpp/` — submodule for the Mapbox `jni.hpp` C++/JNI wrapper used by `core_engine.{hpp,cpp}`.
+- `vendor/jni.hpp/` — submodule for the Mapbox `jni.hpp` C++/JNI wrapper. Used by `core_engine.{hpp,cpp}` (native peer) and `frame_trace.{hpp,cpp}` (static-only via `STATIC_METHOD` from `util.hpp`).
 - `local.properties` is gitignored; the `sdk.dir` line is required for Gradle to find your SDK.

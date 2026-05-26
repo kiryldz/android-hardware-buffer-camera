@@ -51,8 +51,10 @@ protected:
     virtual const char *frameE2ESectionName() const = 0;
     virtual const char *droppedFramesCounterName() const = 0;
 
+    static constexpr int32_t kNoPendingFrame = -1;
+
     // Render-thread-only; no atomic needed.
-    int32_t pendingPresentCookie = -1;
+    int32_t pendingPresentFrameId = kNoPendingFrame;
     int64_t droppedFrames = 0;
 
     virtual bool onWindowCreated() = 0;

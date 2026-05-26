@@ -16,11 +16,6 @@ void FrameTrace::traceBeginAsync(jni::JNIEnv &env, jni::Class<FrameTrace> &,
   ::engine::android::traceBeginAsync(jni::Make<std::string>(env, name).c_str(), frameId);
 }
 
-void FrameTrace::traceEndAsync(jni::JNIEnv &env, jni::Class<FrameTrace> &,
-                               const jni::String &name, jni::jint frameId) {
-  ::engine::android::traceEndAsync(jni::Make<std::string>(env, name).c_str(), frameId);
-}
-
 jni::Local<jni::String> FrameTrace::frameE2EGlName(jni::JNIEnv &env, jni::Class<FrameTrace> &) {
   return jni::Make<jni::String>(env, std::string(traceNames::FRAME_E2E_GL));
 }

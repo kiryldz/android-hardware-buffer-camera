@@ -815,10 +815,10 @@ void VulkanRenderer::renderImpl() {
     recreateSwapChain(0, 0);
   } else if (presentResult != VK_SUCCESS) {
     LOGE("vkQueuePresentKHR returned fatal %i", presentResult);
-  } else if (pendingPresentCookie != -1) {
-    traceEndAsync(frameToScreenSectionName(), pendingPresentCookie);
-    traceEndAsync(frameE2ESectionName(), pendingPresentCookie);
-    pendingPresentCookie = -1;
+  } else if (pendingPresentFrameId != kNoPendingFrame) {
+    traceEndAsync(frameToScreenSectionName(), pendingPresentFrameId);
+    traceEndAsync(frameE2ESectionName(), pendingPresentFrameId);
+    pendingPresentFrameId = kNoPendingFrame;
   }
 }
 

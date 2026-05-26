@@ -16,7 +16,6 @@ object FrameTrace {
 
   @JvmStatic external fun nextFrameId(): Int
   @JvmStatic external fun traceBeginAsync(name: String, frameId: Int)
-  @JvmStatic external fun traceEndAsync(name: String, frameId: Int)
 
   fun beginE2E(mode: RenderingMode, frameId: Int) =
     traceBeginAsync(if (mode == RenderingMode.VULKAN) FRAME_E2E_VK else FRAME_E2E_GL, frameId)
