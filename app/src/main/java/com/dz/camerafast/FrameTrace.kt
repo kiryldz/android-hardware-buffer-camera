@@ -3,15 +3,9 @@ package com.dz.camerafast
 import android.os.Trace
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * Per-frame Perfetto/atrace instrumentation. Section names follow the convention
- * `dz.<stage>.<gl|vk>` so each renderer is metered independently.
- *
- * Frame ids are a process-wide monotonic Int counter (not the sensor timestamp) because
- * android.os.Trace cookies are 32-bit. The Int wraps after ~2.1B frames, which we never reach.
- */
 object FrameTrace {
 
+  // Trace cookies are 32-bit; sensor timestamps overflow Int. Plain counter instead.
   private val nextId = AtomicInteger(0)
 
   fun nextFrameId(): Int = nextId.incrementAndGet()

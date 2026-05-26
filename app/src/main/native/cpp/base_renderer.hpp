@@ -45,19 +45,13 @@ public:
 protected:
     virtual const char *renderingModeName() = 0;
 
-    // Suffix used in dz.frame_*.<suffix> ATrace section names; must be "gl" or "vk".
     virtual const char *traceSuffix() const = 0;
-
-    // Trace section names (cached per renderer).
     virtual const char *frameToNativeSectionName() const = 0;
     virtual const char *frameNativeProcSectionName() const = 0;
     virtual const char *frameToScreenSectionName() const = 0;
     virtual const char *frameE2ESectionName() const = 0;
 
-    // Cookie of the camera frame whose texture/vkImage is staged and waiting for present.
-    // Written from the render-thread task that closes hwBufferToTexture; read+cleared by the
-    // renderer's renderImpl() once the swap/present has happened. Both happen on the render
-    // thread, so a plain int is safe.
+    // Render-thread-only; no atomic needed.
     int32_t pendingPresentCookie = -1;
 
     virtual bool onWindowCreated() = 0;

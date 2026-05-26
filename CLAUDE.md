@@ -2,6 +2,10 @@
 
 Project-wide notes for future sessions. Captures non-obvious context — architecture intent, instrumentation contracts, build gotchas, baseline findings. Read this before diving into code, especially before touching the camera→GPU pipeline or the build.
 
+## Code style
+
+Default to no comments. Only add one when the *why* isn't obvious from the code — a non-trivial invariant, a thread/race subtlety, a cross-file contract, or a workaround. Identifiers carry the *what*; long block-comments explaining the *what* are noise. If you find yourself writing one, ask whether the explanation belongs in this file (architecture / design intent) or a skill (workflow steps) instead.
+
 ## What this is
 
 Android demo app showing how to feed `AHardwareBuffer`s from the camera into both an **OpenGL ES 3** and a **Vulkan 1.3** renderer with zero CPU copies (when the buffer's `USAGE_GPU_SAMPLED_IMAGE` flag is set), then present to a `TextureView`. Almost all rendering lives in C++ via the NDK; Kotlin is glue + Compose UI.

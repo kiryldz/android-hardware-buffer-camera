@@ -146,9 +146,6 @@ void BaseRenderer::updateMvp() {
 
 void BaseRenderer::processCameraFrame(AHardwareBuffer *aHardwareBuffer, int rotationDegrees_,
                                       bool backCamera_, int32_t frameId) {
-  // The Kotlin side opened dz.frame_to_native.<suffix> for this frameId. Close it now that
-  // we've crossed JNI, and open the native-processing slice (run on the camera worker thread
-  // up to the point where the render thread is about to start hwBufferToTexture).
   traceEndAsync(frameToNativeSectionName(), frameId);
   traceBeginAsync(frameNativeProcSectionName(), frameId);
 
@@ -178,16 +175,12 @@ void BaseRenderer::processCameraFrame(AHardwareBuffer *aHardwareBuffer, int rota
     LOGI("Buffer %p released by %s renderer" , aHardwareBuffer, this->renderingModeName());
     bufferMutex.unlock();
 
-    // Texture/vkImage is now ready. Close the native-processing slice and open the
-    // submit→present slice. The renderer's renderImpl() will close it after eglSwapBuffers /
-    // vkQueuePresentKHR. If a newer frame is staged before the Choreographer fires, its cookie
-    // will overwrite pendingPresentCookie and the older frame's slices will be left dangling
-    // — which is the correct behavior (a dropped frame should not contribute to latency p99).
     traceEndAsync(frameNativeProcSectionName(), frameId);
     traceBeginAsync(frameToScreenSectionName(), frameId);
+    // If superseded before present, the older cookie's slices stay open and don't appear in
+    // the trace — dropped frames are intentionally excluded from latency stats.
     pendingPresentCookie = frameId;
 
-    // post choreographer callback as we will need to render this texture
     postChoreographerCallback();
   });
 }
