@@ -16,9 +16,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.runtime.SideEffect
@@ -128,15 +132,18 @@ class CameraActivity : ComponentActivity() {
         )
       }
 
-      Column(modifier = Modifier.safeDrawingPadding()) {
+      Column {
         Text(
           text = cameraMode.name,
           color = Color.White,
           textAlign = TextAlign.Center,
           fontSize = 30.sp,
           modifier = Modifier
-              .background(Color.DarkGray)
               .fillMaxWidth()
+              .background(Color.DarkGray)
+              .windowInsetsPadding(
+                  WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+              )
               .padding(10.dp)
         )
         if (displayMode != DisplayMode.VULKAN) {
@@ -186,7 +193,11 @@ class CameraActivity : ComponentActivity() {
           }
         }
         if (cameraMode != CameraMode.NONE) {
-          Row {
+          Row(
+            modifier = Modifier.windowInsetsPadding(
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+            )
+          ) {
             Button(
               onClick = {
                 lensFacing = if (lensFacing == CameraSelector.LENS_FACING_FRONT) {
