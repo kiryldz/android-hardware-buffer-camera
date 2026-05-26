@@ -764,6 +764,7 @@ void VulkanRenderer::createOtherStaff() {
 }
 
 void VulkanRenderer::renderImpl() {
+  traceBeginSync(traceNames::FRAME_RENDER_VK);
   uint32_t nextIndex;
   // Get the framebuffer index we should draw in
   auto result = vkAcquireNextImageKHR(deviceInfo.device, swapchainInfo.swapchain,
@@ -772,11 +773,13 @@ void VulkanRenderer::renderImpl() {
   if (result == VK_ERROR_OUT_OF_DATE_KHR) {
     LOGW("vkAcquireNextImageKHR returned VK_ERROR_OUT_OF_DATE_KHR; recreating swapchain");
     recreateSwapChain(0, 0);
+    traceEndSync();
     return;
   }
   if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
     // nextIndex is undefined for non-success codes — dropping the frame.
     LOGE("vkAcquireNextImageKHR returned fatal %i; dropping frame", result);
+    traceEndSync();
     return;
   }
   CALL_VK(vkResetFences(deviceInfo.device, 1, &renderInfo.fence))
@@ -805,6 +808,7 @@ void VulkanRenderer::renderImpl() {
           .pImageIndices = &nextIndex,
           .pResults = nullptr,
   };
+  traceEndSync();
   const auto presentResult = vkQueuePresentKHR(deviceInfo.queue, &presentInfo);
   if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
     LOGW("vkQueuePresentKHR returned %i; recreating swapchain", presentResult);

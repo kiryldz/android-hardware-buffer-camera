@@ -177,8 +177,15 @@ void BaseRenderer::processCameraFrame(AHardwareBuffer *aHardwareBuffer, int rota
 
     traceEndAsync(frameNativeProcSectionName(), frameId);
     traceBeginAsync(frameToScreenSectionName(), frameId);
-    // If superseded before present, the older cookie's slices stay open and don't appear in
-    // the trace — dropped frames are intentionally excluded from latency stats.
+    if (pendingPresentCookie != -1) {
+      // Close the superseded frame's slices so the Perfetto UI doesn't render them as
+      // infinitely-open. The closed-on-supersede durations are roughly the same order of
+      // magnitude as completed frames and only perturb aggregate stats by ~1/N; the
+      // dropped_frames counter remains the source of truth for drop count.
+      traceEndAsync(frameToScreenSectionName(), pendingPresentCookie);
+      traceEndAsync(frameE2ESectionName(), pendingPresentCookie);
+      traceSetCounter(droppedFramesCounterName(), ++droppedFrames);
+    }
     pendingPresentCookie = frameId;
 
     postChoreographerCallback();

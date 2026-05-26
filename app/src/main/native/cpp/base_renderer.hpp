@@ -21,7 +21,7 @@ class BaseRenderer {
 public:
     BaseRenderer();
 
-    ~BaseRenderer();
+    virtual ~BaseRenderer();
 
     void setWindow(ANativeWindow *window);
 
@@ -45,14 +45,15 @@ public:
 protected:
     virtual const char *renderingModeName() = 0;
 
-    virtual const char *traceSuffix() const = 0;
     virtual const char *frameToNativeSectionName() const = 0;
     virtual const char *frameNativeProcSectionName() const = 0;
     virtual const char *frameToScreenSectionName() const = 0;
     virtual const char *frameE2ESectionName() const = 0;
+    virtual const char *droppedFramesCounterName() const = 0;
 
     // Render-thread-only; no atomic needed.
     int32_t pendingPresentCookie = -1;
+    int64_t droppedFrames = 0;
 
     virtual bool onWindowCreated() = 0;
 

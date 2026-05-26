@@ -17,11 +17,11 @@ protected:
     return (const char *) "Vulkan";
   }
 
-  const char *traceSuffix() const override { return "vk"; }
   const char *frameToNativeSectionName() const override { return traceNames::FRAME_TO_NATIVE_VK; }
   const char *frameNativeProcSectionName() const override { return traceNames::FRAME_NATIVE_PROC_VK; }
   const char *frameToScreenSectionName() const override { return traceNames::FRAME_TO_SCREEN_VK; }
   const char *frameE2ESectionName() const override { return traceNames::FRAME_E2E_VK; }
+  const char *droppedFramesCounterName() const override { return traceNames::DROPPED_FRAMES_VK; }
 
   bool onWindowCreated() override {
     if (!InitVulkan()) {

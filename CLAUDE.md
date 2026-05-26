@@ -44,24 +44,33 @@ The CPU fallback in `nativeSendCameraFrame` exists because **CameraX**'s `ImageA
 
 ## Frame-timing instrumentation contract
 
-Per camera frame, the analyzer assigns a process-wide monotonic `frameId: Int` via `FrameTrace.nextFrameId()`. That id is the **cookie** of four ATrace async sections per renderer:
+Per camera frame, the analyzer assigns a process-wide monotonic `frameId: Int` via `FrameTrace.nextFrameId()`. That id is the **cookie** of four ATrace **async** sections per renderer, plus one **sync** sub-section nested inside the renderer's `renderImpl`:
 
-| Section | Begin (where) | End (where) | What it measures |
-|---|---|---|---|
-| `dz.frame_to_native.<gl\|vk>` | Kotlin analyzer | `BaseRenderer::processCameraFrame` JNI entry | Kotlin glue overhead |
-| `dz.frame_native_proc.<gl\|vk>` | `processCameraFrame` entry | end of `hwBufferToTexture` on render thread | Native processing |
-| `dz.frame_to_screen.<gl\|vk>` | end of `hwBufferToTexture` | after `eglSwapBuffers` / `vkQueuePresentKHR` | Submit→present |
-| `dz.frame_e2e.<gl\|vk>` | Kotlin analyzer (same point as `to_native` begin) | swap/present returned | **End-to-end** |
+| Section | Kind | Begin (where) | End (where) | What it measures |
+|---|---|---|---|---|
+| `dz.frame_to_native.<gl\|vk>` | async | Kotlin analyzer | `BaseRenderer::processCameraFrame` JNI entry | Kotlin glue overhead |
+| `dz.frame_native_proc.<gl\|vk>` | async | `processCameraFrame` entry | end of `hwBufferToTexture` on render thread | Native processing |
+| `dz.frame_to_screen.<gl\|vk>` | async | end of `hwBufferToTexture` | after `eglSwapBuffers` / `vkQueuePresentKHR` | Submit→present (mostly vsync wait at 60 Hz vs 30 fps camera) |
+| `dz.frame_render.<gl\|vk>` | sync | `renderImpl` entry | just before `eglSwapBuffers` / `vkQueuePresentKHR` | Actual GPU command submission only — subtract from `frame_to_screen` to isolate vsync wait |
+| `dz.frame_e2e.<gl\|vk>` | async | Kotlin analyzer (same point as `to_native` begin) | swap/present returned | **End-to-end** |
 
-Section name constants live in two places that must stay in sync:
+A counter track tracks dropped frames per renderer:
+
+| Counter | When incremented |
+|---|---|
+| `dz.dropped_frames.<gl\|vk>` | When a newer camera frame's texture is staged before the previous one's Choreographer callback fires |
+
+Section + counter name constants live in two places that must stay in sync:
 - Kotlin: `app/src/main/java/com/dz/camerafast/FrameTrace.kt`
 - C++:    `app/src/main/native/cpp/frame_trace.hpp`
 
 Design decisions worth remembering:
 - **Cookie is an `Int`, not the sensor timestamp.** `android.os.Trace` cookies are 32-bit; sensor timestamps in nanoseconds overflow. A simple `AtomicInteger` counter avoids the collision risk that low-32-bit truncation would create.
-- **Superseded frames are deliberately dropped from `to_screen` / `e2e`.** When a newer frame's `hwBufferToTexture` overwrites `pendingPresentCookie` before Choreographer fires, the older frame's slices are left dangling — they won't appear in `slice` rows and won't pollute the latency distribution. By design.
+- **Superseded frames' async slices are closed at the supersede point, not left dangling.** This keeps the Perfetto UI clean (no slices extending to infinity). The closed-on-supersede durations are within ~1/N of completed frames so they barely perturb aggregate stats; the `dropped_frames` counter remains the authoritative drop count.
+- **`dz.frame_render` is a sync section** because both begin and end happen on the render thread within a single function. Use sync (not async) when the section doesn't cross threads, doesn't overlap with others of the same name, and doesn't need per-instance identification — sync sections are slightly cheaper and don't need a cookie.
 - **ATrace async APIs are API 29+; `minSdk` is 29 to match.** No weak-linking dance — `frame_trace.hpp` includes `<android/trace.h>` and calls `ATrace_beginAsyncSection` / `endAsyncSection` directly. If `minSdk` ever drops below 29 again, the helpers will need to come back as weak symbols.
 - **`-a com.dz.camerafast` is mandatory** when invoking `perfetto`. Without it, app-tag atrace sections (which is where these slices land) are filtered out and the trace processor returns zero rows. Both helper scripts always pass it; if you ever invoke `perfetto` by hand, don't forget.
+- **Profileable for release.** `AndroidManifest.xml` declares `<profileable android:shell="true"/>` inside `<application>` so Perfetto can attach to a release build without it being `debuggable`. Always measure on release (`installRelease`) — debug NDK builds add ~50–100% overhead to the C++ paths, which would skew the baseline.
 
 ## Tooling — how to actually use this
 
@@ -78,38 +87,45 @@ All three scripts/skills assume a single ADB device. Set `ANDROID_SERIAL=<serial
 
 These have bitten before; capture them so they don't bite again.
 
-- **`assembleDebug` fails for `armeabi-v7a`** because the repo ships `libs/shaderc/c++_static/{arm64-v8a,x86_64}/libshaderc.a` but not the v7a copy. Always limit to a single ABI:
+- **Use `installRelease` for any latency measurement** — debug builds add significant NDK overhead. The release build is signed with the debug keystore (`signingConfig signingConfigs.debug` in `app/build.gradle`) so it installs locally without provisioning a real keystore.
+- **`assembleDebug` / `assembleRelease` both fail for `armeabi-v7a`** because the repo ships `libs/shaderc/c++_static/{arm64-v8a,x86_64}/libshaderc.a` but not the v7a copy. Always limit to a single ABI:
   ```bash
-  ./gradlew :app:installDebug -Pandroid.injected.build.abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r')
+  ./gradlew :app:installRelease -Pandroid.injected.build.abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r')
   ```
 - **Multi-display devices (foldables) corrupt `adb exec-out screencap`** by prefixing the PNG with a stdout warning. Pass `-d <display-id>` after discovering via `adb shell dumpsys SurfaceFlinger --display-id`. Trace capture is unaffected.
 - **Camera permission is gated by activity finish-on-deny.** Pre-grant it (`adb shell pm grant com.dz.camerafast android.permission.CAMERA`) when scripting; the helper scripts already do.
 - **Renderer state survives `am start`** without `force-stop`. The helper scripts always `force-stop` before launch, and `baseline-frame-latency.sh` also force-stops *between* runs so each iteration sees a cold app.
 
-## Baseline findings (SM-F936B / Android 16, arm64-v8a, 5 × 10 s)
+## Baseline findings (SM-F936B / Android 16, arm64-v8a, release build, 5 × 10 s)
 
-These are the numbers a future PR should be diffed against. Headline metric is `dz.frame_e2e.<gl|vk>` — full camera-arrival → on-screen latency.
+These are the numbers a future PR should be diffed against. Headline metric is `dz.frame_e2e.<gl|vk>` — full camera-arrival → on-screen latency. JSON form at `.cache/frame-latency/baseline.json`.
 
 | Metric | mean | CV% (across 5 runs) |
 |---|---:|---:|
-| `frame_e2e.gl.avg` | 13.05 ms | 2.4% |
-| `frame_e2e.gl.p90` | 20.62 ms | 0.8% |
-| `frame_e2e.gl.p99` | 24.04 ms | 3.4% |
-| `frame_e2e.vk.avg` | 17.38 ms | 1.4% |
-| `frame_e2e.vk.p90` | 25.27 ms | 1.5% |
-| `frame_e2e.vk.p99` | 29.31 ms | 5.0% |
-| `frame_to_screen.gl.p90` | 17.79 ms | 1.3% |
-| `frame_to_screen.vk.p90` | 20.12 ms | 0.8% |
+| `frame_e2e.gl.avg` | 13.25 ms | 1.8% |
+| `frame_e2e.gl.p90` | 20.72 ms | 1.4% |
+| `frame_e2e.gl.p99` | 23.45 ms | 1.3% |
+| `frame_e2e.vk.avg` | 14.91 ms | 1.3% |
+| `frame_e2e.vk.p90` | 22.48 ms | 1.0% |
+| `frame_e2e.vk.p99` | 25.50 ms | 2.6% |
+| `frame_to_screen.gl.p90` | 18.42 ms | 0.8% |
+| `frame_to_screen.vk.p90` | 19.02 ms | 1.0% |
+| `frame_render.gl.avg` | 0.57 ms | 6.4% |
+| `frame_render.vk.avg` | 1.76 ms | 5.0% |
+| `frame_native_proc.gl.avg` | 0.73 ms | 6.2% |
+| `frame_native_proc.vk.avg` | 1.66 ms | 2.4% |
 
-OpenGL is consistently ~4 ms faster end-to-end (`frame_e2e` p90 20.6 ms vs 25.3 ms). Most of e2e is `frame_to_screen` — i.e. wait for the next vsync — so the GL/VK gap mainly reflects `frame_native_proc.vk.avg ≈ 3.2 ms` vs `gl.avg ≈ 1.1 ms` (Vulkan's hwBuffer → vkImage path has more setup).
+OpenGL is ~1.7 ms faster end-to-end on average (`frame_e2e` avg 13.25 vs 14.91), and ~1.8 ms faster at p90 (20.7 vs 22.5). The gap is split between `frame_render` (GL 0.57 vs VK 1.76) and `frame_native_proc` (GL 0.73 vs VK 1.66) — Vulkan's hwBuffer → vkImage path and `vkAcquireNextImageKHR + submit + fence wait` both cost more than the OpenGL equivalents.
+
+**Most of `frame_to_screen` is vsync wait.** `frame_to_screen.gl.avg ≈ 10.9 ms` but only ~0.57 ms of that is actual GL command submission (`frame_render.gl.avg`); the remaining ~10.3 ms is Choreographer/vsync wait. Same shape for Vulkan: ~11.7 ms total vs ~1.76 ms of work. Optimizations that shave µs off GL/VK commands won't move the e2e needle until the vsync wait is what we're trying to displace (e.g. higher refresh rate, lower-latency presentation extensions).
 
 **Which metrics to gate PRs on:**
-- **Tight (±5%)**: `frame_e2e.{gl,vk}.{avg, p90}`, `frame_to_screen.{gl,vk}.p90`. All sub-2% CV.
-- **Looser (±10%)**: `frame_e2e.{gl,vk}.p99`, `frame_native_proc.{gl,vk}.avg`. CV 3–7%.
-- **Watch only, no gate**: `frame_native_proc.{gl,vk}.{p90, p99}` (6–16% CV).
-- **Skip entirely**: every `max` (single-outlier sensitive, 10–30% CV), and `p50` on screen-facing stages (bimodal — submit-to-vsync alignment).
+- **Tight (±5%)**: `frame_e2e.{gl,vk}.{avg, p90, p99}`, `frame_to_screen.{gl,vk}.p90`. All sub-3% CV.
+- **Looser (±10%)**: `frame_render.{gl,vk}.avg`, `frame_native_proc.{gl,vk}.avg`. CV 2–7%.
+- **Watch only, no gate**: `frame_native_proc.{gl,vk}.{p90, p99}` and `frame_render.{gl,vk}.{p90, p99}` (5–25% CV — single-tail-sample noise).
+- **Skip entirely**: every `max` (single-outlier sensitive, 15–40% CV), and `p50` on screen-facing stages (bimodal — submit-to-vsync alignment).
 
-Slice counts are deterministic to within ±1 per 10 s window: ~298 frames per renderer (~30 fps from camera). A meaningful deviation in count is itself a regression signal — the renderer dropped frames before present.
+Slice counts are deterministic to within ±1 per 10 s window: ~298 frames per renderer (~30 fps from camera). A meaningful deviation in count is itself a regression signal.
 
 ## Planned next steps (not yet implemented)
 

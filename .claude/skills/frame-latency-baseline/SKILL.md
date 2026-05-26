@@ -10,9 +10,9 @@ Runs the one-shot frame-latency measurement five times and aggregates dispersion
 ## Preconditions
 
 - A device is connected via `adb` (exactly one device in `device` state; export `ANDROID_SERIAL=<serial>` if multiple).
-- The debug APK is installed:
+- The **release** APK is installed — debug NDK builds add noticeable overhead and would invalidate the baseline. Release is signed with the debug keystore and declares `<profileable android:shell="true"/>`, so:
   ```bash
-  ./gradlew :app:installDebug -Pandroid.injected.build.abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r')
+  ./gradlew :app:installRelease -Pandroid.injected.build.abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r')
   ```
 - `python3` and `curl` are on `PATH`. The first run downloads Perfetto's `trace_processor` into `.cache/frame-latency/` (gitignored, ~25 MB).
 

@@ -19,11 +19,11 @@ protected:
         return (const char *) "OpenGL ES";
     }
 
-    const char *traceSuffix() const override { return "gl"; }
     const char *frameToNativeSectionName() const override { return traceNames::FRAME_TO_NATIVE_GL; }
     const char *frameNativeProcSectionName() const override { return traceNames::FRAME_NATIVE_PROC_GL; }
     const char *frameToScreenSectionName() const override { return traceNames::FRAME_TO_SCREEN_GL; }
     const char *frameE2ESectionName() const override { return traceNames::FRAME_E2E_GL; }
+    const char *droppedFramesCounterName() const override { return traceNames::DROPPED_FRAMES_GL; }
 
     bool onWindowCreated() override {
         return prepareEgl();

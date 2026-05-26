@@ -8,9 +8,10 @@
 #   scripts/measure-frame-latency.sh [seconds]      (default: 10)
 #
 # Requires: adb on PATH, python3, curl (only the first time, to fetch
-# Perfetto's trace_processor). Device must already have the debug APK
-# installed; run `./gradlew :app:installDebug -Pandroid.injected.build.abi=$(adb shell getprop ro.product.cpu.abi)`
-# first if needed.
+# Perfetto's trace_processor). Device must already have the release APK
+# installed; run `./gradlew :app:installRelease -Pandroid.injected.build.abi=$(adb shell getprop ro.product.cpu.abi)`
+# first if needed. Release is signed with the debug keystore and declares
+# <profileable android:shell="true"/> so Perfetto can attach.
 
 set -euo pipefail
 
@@ -56,8 +57,8 @@ echo "Device: $model (serial=$serial, sdk=$sdk, abi=$abi)"
 # 2. APK installed?
 if ! adb shell cmd package list packages -3 | tr -d '\r' | grep -qx "package:${PKG}"; then
   echo "error: $PKG is not installed on the device." >&2
-  echo "Install it with:" >&2
-  echo "  ./gradlew :app:installDebug -Pandroid.injected.build.abi=$abi" >&2
+  echo "Install the release variant (debug NDK is slower; release is signed with the debug key):" >&2
+  echo "  ./gradlew :app:installRelease -Pandroid.injected.build.abi=$abi" >&2
   exit 1
 fi
 
