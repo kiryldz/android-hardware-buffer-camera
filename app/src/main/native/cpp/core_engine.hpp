@@ -60,7 +60,7 @@ public:
 
   void nativeUpdateWindowSize(JNIEnv &env, jni::jint width, jni::jint height);
 
-  void nativeSendCameraFrame(JNIEnv &env, jni::Object <HardwareBuffer> const &buffer, jni::jint rotationDegrees, jni::jboolean backCamera);
+  void nativeSendCameraFrame(JNIEnv &env, jni::Object <HardwareBuffer> const &buffer, jni::jint rotationDegrees, jni::jboolean backCamera, jni::jint frameId);
 
   void nativeRefit(JNIEnv &env);
 

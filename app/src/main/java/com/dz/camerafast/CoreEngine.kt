@@ -32,9 +32,9 @@ class CoreEngine(
     initialize(renderingMode.ordinal)
   }
 
-  fun sendCameraFrame(buffer: HardwareBuffer, rotationDegrees: Int, backCamera: Boolean) {
+  fun sendCameraFrame(buffer: HardwareBuffer, rotationDegrees: Int, backCamera: Boolean, frameId: Int) {
     buffer.printSupportedUsageFlags()
-    nativeSendCameraFrame(buffer, rotationDegrees, backCamera)
+    nativeSendCameraFrame(buffer, rotationDegrees, backCamera, frameId)
   }
 
   private var previousWeight: Float = 1.0f
@@ -94,7 +94,8 @@ class CoreEngine(
   private external fun nativeSendCameraFrame(
     buffer: HardwareBuffer,
     rotationDegrees: Int,
-    backCamera: Boolean
+    backCamera: Boolean,
+    frameId: Int
   )
 
   private external fun nativeRefit()

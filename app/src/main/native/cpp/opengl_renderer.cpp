@@ -252,6 +252,7 @@ void OpenGLRenderer::renderImpl() {
     if (!eglSwapBuffers(eglDisplay, eglSurface)) {
       LOGE("eglSwapBuffers returned error %d", eglGetError());
     }
+    // No camera frame was actually presented this tick — leave pendingPresentCookie alone.
     return;
   }
   glUseProgram(program);
@@ -287,6 +288,13 @@ void OpenGLRenderer::renderImpl() {
     LOGE("eglSwapBuffers returned error %d", eglGetError());
   } else {
     LOGI("Swapped buffers!");
+    // Close the per-frame ATrace slices for whichever camera frame's texture was just shown.
+    // Runs on the render thread, same thread that wrote pendingPresentCookie — no race.
+    if (pendingPresentCookie != -1) {
+      traceEndAsync(frameToScreenSectionName(), pendingPresentCookie);
+      traceEndAsync(frameE2ESectionName(), pendingPresentCookie);
+      pendingPresentCookie = -1;
+    }
   }
 }
 

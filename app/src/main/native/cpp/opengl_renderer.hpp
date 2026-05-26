@@ -7,6 +7,7 @@
 #include <GLES2/gl2ext.h>
 
 #include "base_renderer.hpp"
+#include "frame_trace.hpp"
 
 namespace engine {
 namespace android {
@@ -17,6 +18,12 @@ protected:
     const char *renderingModeName() override {
         return (const char *) "OpenGL ES";
     }
+
+    const char *traceSuffix() const override { return "gl"; }
+    const char *frameToNativeSectionName() const override { return traceNames::FRAME_TO_NATIVE_GL; }
+    const char *frameNativeProcSectionName() const override { return traceNames::FRAME_NATIVE_PROC_GL; }
+    const char *frameToScreenSectionName() const override { return traceNames::FRAME_TO_SCREEN_GL; }
+    const char *frameE2ESectionName() const override { return traceNames::FRAME_E2E_GL; }
 
     bool onWindowCreated() override {
         return prepareEgl();

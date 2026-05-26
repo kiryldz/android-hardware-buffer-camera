@@ -69,7 +69,8 @@ void CoreEngine::nativeUpdateWindowSize(JNIEnv &env, jni::jint width, jni::jint 
 
 /** called from worker thread **/
 void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBuffer> &buffer,
-                                       jni::jint rotationDegrees, jni::jboolean backCamera) {
+                                       jni::jint rotationDegrees, jni::jboolean backCamera,
+                                       jni::jint frameId) {
   std::unique_lock<std::mutex> lock(coreEngineMutex);
   if (!renderer) {
     return;
@@ -78,7 +79,7 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
   AHardwareBuffer_Desc cameraBufferDescription;
   AHardwareBuffer_describe(cameraBuffer, &cameraBufferDescription);
   if (cameraBufferDescription.usage & AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE) {
-    renderer->processCameraFrame(cameraBuffer, rotationDegrees, backCamera);
+    renderer->processCameraFrame(cameraBuffer, rotationDegrees, backCamera, frameId);
     return;
   }
   // CPU fallback: drop the mutex around the slow memcpy so main-thread JNI calls aren't blocked
@@ -113,7 +114,7 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
 
   lock.lock();
   if (renderer) {
-    renderer->processCameraFrame(localGpuBuffer, rotationDegrees, backCamera);
+    renderer->processCameraFrame(localGpuBuffer, rotationDegrees, backCamera, frameId);
   }
   AHardwareBuffer_release(localGpuBuffer);
 }

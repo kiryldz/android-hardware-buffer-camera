@@ -811,6 +811,12 @@ void VulkanRenderer::renderImpl() {
     recreateSwapChain(0, 0);
   } else if (presentResult != VK_SUCCESS) {
     LOGE("vkQueuePresentKHR returned fatal %i", presentResult);
+  } else if (pendingPresentCookie != -1) {
+    // Close the per-frame ATrace slices for whichever camera frame just made it onto the
+    // swapchain. Same render thread as the writer, no race.
+    traceEndAsync(frameToScreenSectionName(), pendingPresentCookie);
+    traceEndAsync(frameE2ESectionName(), pendingPresentCookie);
+    pendingPresentCookie = -1;
   }
 }
 

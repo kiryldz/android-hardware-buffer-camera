@@ -117,11 +117,15 @@ fun Camera2(
         {
           val image: Image? = it.acquireLatestImage()
           image?.hardwareBuffer?.let { buffer ->
+            val frameId = FrameTrace.nextFrameId()
             coreEngines.forEach { engine ->
+              FrameTrace.beginE2E(engine.renderingMode, frameId)
+              FrameTrace.beginToNative(engine.renderingMode, frameId)
               engine.sendCameraFrame(
                 buffer = buffer,
                 rotationDegrees = rotationDegrees,
-                backCamera = lensFacing == CameraSelector.LENS_FACING_BACK
+                backCamera = lensFacing == CameraSelector.LENS_FACING_BACK,
+                frameId = frameId
               )
             }
             buffer.close()

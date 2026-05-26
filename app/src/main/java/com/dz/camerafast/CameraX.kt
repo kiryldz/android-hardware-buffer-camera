@@ -44,11 +44,15 @@ fun CameraX(
       imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
         Log.i(TAG, "New image ${imageProxy.hashCode()} arrived!")
         imageProxy.image?.hardwareBuffer?.let { buffer ->
-          coreEngines.forEach {
-            it.sendCameraFrame(
+          val frameId = FrameTrace.nextFrameId()
+          coreEngines.forEach { engine ->
+            FrameTrace.beginE2E(engine.renderingMode, frameId)
+            FrameTrace.beginToNative(engine.renderingMode, frameId)
+            engine.sendCameraFrame(
               buffer = buffer,
               rotationDegrees = imageProxy.imageInfo.rotationDegrees,
-              backCamera = lensFacing == CameraSelector.LENS_FACING_BACK
+              backCamera = lensFacing == CameraSelector.LENS_FACING_BACK,
+              frameId = frameId
             )
           }
           buffer.close()
