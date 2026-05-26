@@ -60,12 +60,10 @@ A counter track tracks dropped frames per renderer:
 |---|---|
 | `dz.dropped_frames.<gl\|vk>` | When a newer camera frame's texture is staged before the previous one's Choreographer callback fires |
 
-Section + counter name constants live in two places that must stay in sync:
-- Kotlin: `app/src/main/java/com/dz/camerafast/FrameTrace.kt`
-- C++:    `app/src/main/native/cpp/frame_trace.hpp`
+Section + counter name constants live in **one** place — `app/src/main/native/cpp/frame_trace.hpp`. The Kotlin `FrameTrace` object exposes `@JvmStatic external` methods backed by `app/src/main/native/cpp/frame_trace.cpp`; its `FRAME_E2E_GL` / `FRAME_E2E_VK` / `FRAME_TO_NATIVE_GL` / `FRAME_TO_NATIVE_VK` `@JvmField val`s are populated from C++ at class-load. Don't add new constants to Kotlin — extend `traceNames` in `frame_trace.hpp` and add a getter.
 
 Design decisions worth remembering:
-- **Cookie is an `Int`, not the sensor timestamp.** `android.os.Trace` cookies are 32-bit; sensor timestamps in nanoseconds overflow. A simple `AtomicInteger` counter avoids the collision risk that low-32-bit truncation would create.
+- **`frameId` is an `Int`, not the sensor timestamp.** ATrace's async-section cookie is 32-bit; sensor timestamps in nanoseconds overflow. A `std::atomic<int32_t>` in `frame_trace.cpp` (exposed as `FrameTrace.nextFrameId()`) avoids that. We use `frameId` rather than "cookie" in our wrappers because we always pass a frame number; the term "cookie" is only kept where the underlying ATrace API uses it.
 - **Superseded frames' async slices are closed at the supersede point, not left dangling.** This keeps the Perfetto UI clean (no slices extending to infinity). The closed-on-supersede durations are within ~1/N of completed frames so they barely perturb aggregate stats; the `dropped_frames` counter remains the authoritative drop count.
 - **`dz.frame_render` is a sync section** because both begin and end happen on the render thread within a single function. Use sync (not async) when the section doesn't cross threads, doesn't overlap with others of the same name, and doesn't need per-instance identification — sync sections are slightly cheaper and don't need a cookie.
 - **ATrace async APIs are API 29+; `minSdk` is 29 to match.** No weak-linking dance — `frame_trace.hpp` includes `<android/trace.h>` and calls `ATrace_beginAsyncSection` / `endAsyncSection` directly. If `minSdk` ever drops below 29 again, the helpers will need to come back as weak symbols.
