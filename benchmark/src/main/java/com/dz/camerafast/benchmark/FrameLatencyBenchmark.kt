@@ -2,6 +2,7 @@ package com.dz.camerafast.benchmark
 
 import android.content.Intent
 import androidx.benchmark.macro.CompilationMode
+import androidx.benchmark.macro.ExperimentalMetricApi
 import androidx.benchmark.macro.StartupMode
 import androidx.benchmark.macro.TraceSectionMetric
 import androidx.benchmark.macro.TraceSectionMetric.Mode
@@ -24,6 +25,7 @@ import org.junit.runner.RunWith
  *     -Pandroid.testInstrumentationRunnerArguments.dz.iterations=5 \
  *     -Pandroid.testInstrumentationRunnerArguments.dz.duration.ms=10000
  */
+@OptIn(ExperimentalMetricApi::class)
 @RunWith(AndroidJUnit4::class)
 class FrameLatencyBenchmark {
 
