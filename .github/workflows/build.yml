@@ -29,19 +29,19 @@ jobs:
           # PRs get read-only cache; main branch pushes can write.
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      - name: Build app + benchmark APKs (arm64-v8a only)
+      - name: Build app + androidTest APKs (arm64-v8a only)
         run: |
           ./gradlew \
             :app:assembleRelease \
-            :benchmark:assembleRelease \
+            :app:assembleReleaseAndroidTest \
             -Pandroid.injected.build.abi=arm64-v8a \
             --stacktrace
 
       - name: Stage APKs for upload
         run: |
           mkdir -p staged-apks
-          find app/build       -name "app-release*.apk"       -exec cp {} staged-apks/app-release.apk \;
-          find benchmark/build -name "benchmark-release*.apk" -exec cp {} staged-apks/benchmark-release.apk \;
+          find app/build -name "app-release.apk"             -exec cp {} staged-apks/app-release.apk \;
+          find app/build -name "app-release-androidTest.apk" -exec cp {} staged-apks/app-release-androidTest.apk \;
           ls -lh staged-apks/
 
       - name: Upload app APK
@@ -51,9 +51,9 @@ jobs:
           path: staged-apks/app-release.apk
           retention-days: 3
 
-      - name: Upload benchmark APK
+      - name: Upload androidTest APK
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-release-apk
-          path: staged-apks/benchmark-release.apk
+          name: app-release-androidTest-apk
+          path: staged-apks/app-release-androidTest.apk
           retention-days: 3

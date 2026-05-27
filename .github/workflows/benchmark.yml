@@ -28,19 +28,19 @@ jobs:
         with:
           cache-read-only: true
 
-      - name: Build app + benchmark APKs (arm64-v8a only)
+      - name: Build app + androidTest APKs (arm64-v8a only)
         run: |
           ./gradlew \
             :app:assembleRelease \
-            :benchmark:assembleRelease \
+            :app:assembleReleaseAndroidTest \
             -Pandroid.injected.build.abi=arm64-v8a \
             --stacktrace
 
       - name: Stage APKs for upload
         run: |
           mkdir -p staged-apks
-          find app/build       -name "app-release*.apk"       -exec cp {} staged-apks/app-release.apk \;
-          find benchmark/build -name "benchmark-release*.apk" -exec cp {} staged-apks/benchmark-release.apk \;
+          find app/build -name "app-release.apk"             -exec cp {} staged-apks/app-release.apk \;
+          find app/build -name "app-release-androidTest.apk" -exec cp {} staged-apks/app-release-androidTest.apk \;
           ls -lh staged-apks/
 
       - uses: actions/upload-artifact@v4
@@ -51,8 +51,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: benchmark-release-apk
-          path: staged-apks/benchmark-release.apk
+          name: app-release-androidTest-apk
+          path: staged-apks/app-release-androidTest.apk
           retention-days: 1
 
   # ── Reusable FTL runner ───────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: benchmark-release-apk
+          name: app-release-androidTest-apk
           path: apks/
 
       - uses: google-github-actions/auth@v2
@@ -83,25 +83,24 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Run benchmark on FTL (Pixel 5 — Adreno 620)
+      - name: Run frame-latency capture on FTL (Pixel 5 — Adreno 620)
         run: |
           # Spark free tier: 5 physical device-runs/day.
           # redfin = Pixel 5, Snapdragon 765G, Adreno 620.
-          # --timeout is generous; the benchmark itself runs 5×10 s = 50 s of
-          # actual measurement plus Macrobenchmark harness overhead (~2 min total).
+          # --timeout is generous; the test itself runs 5×10 s = 50 s of actual
+          # capture, plus app warm-up and FTL setup overhead (~2 min total).
           set -o pipefail
           gcloud firebase test android run \
             --type instrumentation \
             --app apks/app-release.apk \
-            --test apks/benchmark-release.apk \
+            --test apks/app-release-androidTest.apk \
             --device model=redfin,version=30,locale=en,orientation=portrait \
             --timeout 10m \
-            --no-performance-metrics \
             --directories-to-pull /sdcard/Android/media/com.dz.camerafast/additional_test_output \
             --results-bucket ${{ secrets.GCP_RESULTS_BUCKET }} \
             --results-dir benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }} \
-            --test-runner-class androidx.benchmark.junit4.AndroidBenchmarkRunner \
-            --test-targets "class com.dz.camerafast.benchmark.FrameLatencyBenchmark" \
+            --test-runner-class androidx.test.runner.AndroidJUnitRunner \
+            --test-targets "class com.dz.camerafast.perf.FrameLatencyCapture" \
             --environment-variables "additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output,dz.iterations=5,dz.duration.ms=10000" \
             2>&1 | tee ftl-adreno.log
 
@@ -158,7 +157,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: benchmark-release-apk
+          name: app-release-androidTest-apk
           path: apks/
 
       - uses: google-github-actions/auth@v2
@@ -167,22 +166,21 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Run benchmark on FTL (Pixel 6 — Mali-G78)
+      - name: Run frame-latency capture on FTL (Pixel 6 — Mali-G78)
         run: |
           # oriole = Pixel 6, Google Tensor, Mali-G78.
           set -o pipefail
           gcloud firebase test android run \
             --type instrumentation \
             --app apks/app-release.apk \
-            --test apks/benchmark-release.apk \
+            --test apks/app-release-androidTest.apk \
             --device model=oriole,version=32,locale=en,orientation=portrait \
             --timeout 10m \
-            --no-performance-metrics \
             --directories-to-pull /sdcard/Android/media/com.dz.camerafast/additional_test_output \
             --results-bucket ${{ secrets.GCP_RESULTS_BUCKET }} \
             --results-dir benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }} \
-            --test-runner-class androidx.benchmark.junit4.AndroidBenchmarkRunner \
-            --test-targets "class com.dz.camerafast.benchmark.FrameLatencyBenchmark" \
+            --test-runner-class androidx.test.runner.AndroidJUnitRunner \
+            --test-targets "class com.dz.camerafast.perf.FrameLatencyCapture" \
             --environment-variables "additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output,dz.iterations=5,dz.duration.ms=10000" \
             2>&1 | tee ftl-mali.log
 

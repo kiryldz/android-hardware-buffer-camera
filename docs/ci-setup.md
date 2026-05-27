@@ -95,19 +95,26 @@ When CI exits 2 (improvement beyond tolerance):
 2. Copy-paste it into the relevant `benchmark/baselines/baseline-<gpu>.json`.
 3. Commit the file and push — the check will go green.
 
-You can alternatively re-run the benchmark locally with a tethered device:
+You can alternatively re-run the capture locally with a tethered device.
+The same instrumented test that CI runs on FTL also runs via Gradle:
 
 ```bash
-./gradlew :app:installRelease :benchmark:connectedReleaseAndroidTest \
+./gradlew :app:installRelease :app:connectedReleaseAndroidTest \
   -Pandroid.injected.build.abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r') \
+  -Pandroid.testInstrumentationRunnerArguments.additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output \
   -Pandroid.testInstrumentationRunnerArguments.dz.iterations=5 \
   -Pandroid.testInstrumentationRunnerArguments.dz.duration.ms=10000
 
+# AGP's UTP auto-pulls traces from the device into:
 python3 scripts/aggregate-traces.py \
-  app/build/outputs/connected_android_test_additional_output/releaseAndroidTest/connected \
+  "app/build/outputs/connected_android_test_additional_output/releaseAndroidTest/connected/<device>" \
   benchmark/baselines/baseline-<gpu>.json \
   --device-model "My Device" --gpu "Adreno 620" --ftl-model-id "redfin" --android-sdk 30
 ```
+
+For ad-hoc local measurement without going through Gradle, the Bash
+equivalents `scripts/measure-frame-latency.sh` and
+`scripts/baseline-frame-latency.sh` capture the same `dz.frame_*` slices.
 
 Note: locally-captured values differ from FTL — if CI already seeded the
 baseline from FTL, prefer the FTL numbers (copy from step summary).

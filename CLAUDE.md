@@ -76,13 +76,13 @@ Design decisions worth remembering:
 |---|---|
 | One-shot frame-latency measurement (single N-second capture) | `scripts/measure-frame-latency.sh [seconds]` |
 | Establish a local baseline with dispersion (5 × 10s by default, JSON output) | `scripts/baseline-frame-latency.sh` — invokable via `/frame-latency-baseline` |
-| Run macrobenchmark locally on a tethered device | `./gradlew :benchmark:connectedReleaseAndroidTest -Pandroid.injected.build.abi=arm64-v8a` |
-| Aggregate perfetto traces from a macrobenchmark run into results.json | `scripts/aggregate-traces.py <traces-dir> <output.json>` |
+| Run the CI capture instrumentation test locally on a tethered device | `./gradlew :app:connectedReleaseAndroidTest -Pandroid.injected.build.abi=arm64-v8a -Pandroid.testInstrumentationRunnerArguments.additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output` |
+| Aggregate perfetto traces (from FTL or local connected test) into results.json | `scripts/aggregate-traces.py <traces-dir> <output.json>` |
 | Compare results.json against a per-GPU baseline | `scripts/compare-baseline.py benchmark/baselines/baseline-<gpu>.json results.json` |
 | Build, install, launch, screenshot for visual verification of UI changes | `/verify-on-device` |
 | Discover Android-platform skills (camera, performance, perfetto-sql, etc.) | `vendor/android-skills/` submodule |
 
-The bash scripts and the Gradle benchmark both emit / consume traces via `scripts/aggregate-traces.py`, so there is one place for stats math. All tools assume a single ADB device locally; set `ANDROID_SERIAL=<serial>` if multiple are attached. `trace_processor` is auto-downloaded to `.cache/frame-latency/` (gitignored, ~25 MB) on first use.
+The bash scripts and the `:app/androidTest` capture (`FrameLatencyCapture`) both emit `.pftrace` files that `scripts/aggregate-traces.py` consumes, so there is one place for stats math. All tools assume a single ADB device locally; set `ANDROID_SERIAL=<serial>` if multiple are attached. `trace_processor` is auto-downloaded to `.cache/frame-latency/` (gitignored, ~25 MB) on first use.
 
 ## Build / install gotchas
 
@@ -135,7 +135,7 @@ Three required GitHub Actions checks gate every PR:
 | Check | File | What it does |
 |---|---|---|
 | `build` | `.github/workflows/build.yml` | `assembleRelease` + `assembleReleaseAndroidTest` (arm64-v8a), uploads APK artifacts |
-| `benchmark-adreno` | `.github/workflows/benchmark.yml` | Runs `FrameLatencyBenchmark` on FTL Pixel 5 (Adreno 620), compares against `benchmark/baselines/baseline-adreno.json` |
+| `benchmark-adreno` | `.github/workflows/benchmark.yml` | Runs `com.dz.camerafast.perf.FrameLatencyCapture` (an `:app/androidTest` instrumentation test that drives N×Ds Perfetto captures) on FTL Pixel 5 (Adreno 620), compares against `benchmark/baselines/baseline-adreno.json` |
 | `benchmark-mali` | `.github/workflows/benchmark.yml` | Same on FTL Pixel 6 (Mali-G78), compares against `benchmark/baselines/baseline-mali.json` |
 
 The compare step uses **two-sided tolerance gates** from `benchmark/gates.yaml` (tight ±5%, loose ±10%):
