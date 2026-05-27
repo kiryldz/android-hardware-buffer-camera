@@ -44,9 +44,3 @@ dependencies {
     implementation "androidx.test:runner:1.6.2"
 }
 
-androidComponents {
-    beforeVariants(selector().all()) { variant ->
-        // Only arm64-v8a — the repo doesn't ship armeabi-v7a shaderc static lib.
-        variant.enable = variant.buildType == "release"
-    }
-}

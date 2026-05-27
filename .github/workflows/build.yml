@@ -37,16 +37,19 @@ jobs:
             -Pandroid.injected.build.abi=arm64-v8a \
             --stacktrace
 
+      - name: Locate APKs
+        run: find . -name "*.apk" -not -path "*/.gradle/*" | sort
+
       - name: Upload app APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/**/app-release*.apk
           retention-days: 3
 
       - name: Upload benchmark APK
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-release-apk
-          path: benchmark/build/outputs/apk/release/benchmark-release.apk
+          path: benchmark/build/outputs/apk/**/benchmark-release*.apk
           retention-days: 3
