@@ -135,8 +135,8 @@ Three required GitHub Actions checks gate every PR:
 | Check | File | What it does |
 |---|---|---|
 | `build` | `.github/workflows/build.yml` | `assembleRelease` + `assembleReleaseAndroidTest` (arm64-v8a), uploads APK artifacts |
-| `benchmark-adreno` | `.github/workflows/benchmark.yml` | Runs `com.dz.camerafast.perf.FrameLatencyCapture` (an `:app/androidTest` instrumentation test that drives N×Ds Perfetto captures) on FTL Pixel 5 (Adreno 620), compares against `benchmark/baselines/baseline-adreno.json` |
-| `benchmark-mali` | `.github/workflows/benchmark.yml` | Same on FTL Pixel 6 (Mali-G78), compares against `benchmark/baselines/baseline-mali.json` |
+| `benchmark-adreno` | `.github/workflows/benchmark.yml` | Runs `com.dz.camerafast.perf.FrameLatencyCapture` (an `:app/androidTest` instrumentation test that drives N×Ds Perfetto captures) on FTL Galaxy A52s 5G (Adreno 642L, API 34), compares against `benchmark/baselines/baseline-adreno.json` |
+| `benchmark-mali` | `.github/workflows/benchmark.yml` | Same on FTL Pixel 6 (Mali-G78, API 33), compares against `benchmark/baselines/baseline-mali.json` |
 
 The compare step uses **two-sided tolerance gates** from `benchmark/gates.yaml` (tight ±5%, loose ±10%):
 - **Exit 1 (regression)** — blocks merge; fix the performance issue.

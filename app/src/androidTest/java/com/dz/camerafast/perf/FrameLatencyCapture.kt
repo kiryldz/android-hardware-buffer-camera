@@ -8,18 +8,21 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Test
 import org.junit.runner.RunWith
 
-// Drives CameraActivity through N cold-start iterations, capturing one Perfetto
-// trace per iteration into additionalTestOutputDir for FTL --directories-to-pull
-// to export. Mirrors scripts/measure-frame-latency.sh so CI and local runs use
-// the same capture recipe; the resulting *.pftrace files are aggregated by
-// scripts/aggregate-traces.py.
+// Drives CameraActivity and captures N back-to-back Perfetto traces into
+// additionalTestOutputDir for FTL --directories-to-pull to export. The
+// resulting *.pftrace files are aggregated by scripts/aggregate-traces.py.
 //
 // Runner arguments (-e on the command line, or --environment-variables on FTL):
 //   dz.iterations           Number of capture iterations (default 5).
 //   dz.duration.ms          Capture window per iteration in ms (default 10000).
 //   additionalTestOutputDir Where to write the .pftrace files. Must be a path
-//                           that both the shell user can write and that FTL
-//                           pulls via --directories-to-pull.
+//                           the shell user can write and that FTL pulls via
+//                           --directories-to-pull. Locally AGP injects its own
+//                           value; on FTL we pass it via --environment-variables.
+//
+// Note: perfetto's short-form CLI (-t, -a, positional categories) requires
+// Android 12+. .github/workflows/benchmark.yml pins both FTL devices to API 31+
+// for this reason.
 @RunWith(AndroidJUnit4::class)
 class FrameLatencyCapture {
 
@@ -41,9 +44,8 @@ class FrameLatencyCapture {
         // The instrumentation runs in the target app's own process (default
         // when androidTest lives in :app), so `am force-stop com.dz.camerafast`
         // would SIGKILL the test. Launch CameraActivity once and capture N
-        // adjacent steady-state windows instead. The dz.frame_* slices are
-        // emitted continuously by the preview pipeline, so this still produces
-        // identically-aggregated p50/p90/p99 once warm-up is past.
+        // adjacent steady-state windows — dz.frame_* slices are emitted
+        // continuously by the preview pipeline.
         targetContext.startActivity(
             Intent().setClassName(TARGET_PKG, "$TARGET_PKG.CameraActivity")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -62,9 +64,19 @@ class FrameLatencyCapture {
             )
 
             // /data/misc/perfetto-traces is shell:shell — copy out into the
-            // FTL-collected dir (the shell user can write /sdcard/Android/media).
+            // FTL-collected dir (shell can write /sdcard/Android/media/<pkg>).
             ui.shell("cp $deviceTrace $outputTrace")
             ui.shell("rm $deviceTrace")
+
+            // UiAutomation.executeShellCommand returns the moment the command
+            // exits but doesn't expose its exit code; if perfetto rejects the
+            // command line (e.g. short-form not available on this Android
+            // version) the trace file is missing — fail fast with context.
+            val ls = ui.shell("ls -l $outputTrace")
+            check(ls.isNotBlank()) {
+                "perfetto did not produce $outputTrace on iteration $i. " +
+                    "Output dir contents: ${ui.shell("ls -la $outputDir")}"
+            }
         }
     }
 

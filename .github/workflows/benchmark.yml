@@ -83,10 +83,12 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Run frame-latency capture on FTL (Pixel 5 — Adreno 620)
+      - name: Run frame-latency capture on FTL (Galaxy A52s — Adreno 642L)
         run: |
           # Spark free tier: 5 physical device-runs/day.
-          # redfin = Pixel 5, Snapdragon 765G, Adreno 620.
+          # a52sxq = Galaxy A52s 5G, Snapdragon 778G, Adreno 642L.
+          # Picked over redfin (Pixel 5 / Adreno 620) because redfin is locked
+          # to Android 11 on FTL and perfetto's short-form CLI requires API 31+.
           # --timeout is generous; the test itself runs 5×10 s = 50 s of actual
           # capture, plus app warm-up and FTL setup overhead (~2 min total).
           set -o pipefail
@@ -94,7 +96,7 @@ jobs:
             --type instrumentation \
             --app apks/app-release.apk \
             --test apks/app-release-androidTest.apk \
-            --device model=redfin,version=30,locale=en,orientation=portrait \
+            --device model=a52sxq,version=34,locale=en,orientation=portrait \
             --timeout 10m \
             --directories-to-pull /sdcard/Android/media/com.dz.camerafast/additional_test_output \
             --results-bucket ${{ secrets.GCP_RESULTS_BUCKET }} \
@@ -107,7 +109,7 @@ jobs:
       - name: Pull trace output from GCS
         run: |
           gsutil -m cp -r \
-            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }}/redfin-30-en-portrait/artifacts/additional_test_output" \
+            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }}/a52sxq-34-en-portrait/artifacts/additional_test_output" \
             trace-output-adreno/ || true
           # Fallback: FTL sometimes puts files at a slightly different path.
           if [ -z "$(find trace-output-adreno -name '*.perfetto-trace' -o -name '*.pftrace' 2>/dev/null | head -1)" ]; then
@@ -121,10 +123,10 @@ jobs:
           python3 scripts/aggregate-traces.py \
             trace-output-adreno \
             results-adreno.json \
-            --device-model "Pixel 5" \
-            --gpu "Adreno 620" \
-            --ftl-model-id "redfin" \
-            --android-sdk 30 \
+            --device-model "Galaxy A52s 5G" \
+            --gpu "Adreno 642L" \
+            --ftl-model-id "a52sxq" \
+            --android-sdk 34 \
             --duration-s 10
 
       - name: Compare against baseline
@@ -168,13 +170,14 @@ jobs:
 
       - name: Run frame-latency capture on FTL (Pixel 6 — Mali-G78)
         run: |
-          # oriole = Pixel 6, Google Tensor, Mali-G78.
+          # oriole = Pixel 6, Google Tensor, Mali-G78. Android 13 (API 33) so
+          # perfetto's short-form CLI is available.
           set -o pipefail
           gcloud firebase test android run \
             --type instrumentation \
             --app apks/app-release.apk \
             --test apks/app-release-androidTest.apk \
-            --device model=oriole,version=32,locale=en,orientation=portrait \
+            --device model=oriole,version=33,locale=en,orientation=portrait \
             --timeout 10m \
             --directories-to-pull /sdcard/Android/media/com.dz.camerafast/additional_test_output \
             --results-bucket ${{ secrets.GCP_RESULTS_BUCKET }} \
@@ -187,7 +190,7 @@ jobs:
       - name: Pull trace output from GCS
         run: |
           gsutil -m cp -r \
-            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }}/oriole-32-en-portrait/artifacts/additional_test_output" \
+            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }}/oriole-33-en-portrait/artifacts/additional_test_output" \
             trace-output-mali/ || true
           if [ -z "$(find trace-output-mali -name '*.perfetto-trace' -o -name '*.pftrace' 2>/dev/null | head -1)" ]; then
             gsutil -m rsync -r \
@@ -203,7 +206,7 @@ jobs:
             --device-model "Pixel 6" \
             --gpu "Mali-G78" \
             --ftl-model-id "oriole" \
-            --android-sdk 32 \
+            --android-sdk 33 \
             --duration-s 10
 
       - name: Compare against baseline

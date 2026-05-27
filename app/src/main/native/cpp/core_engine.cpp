@@ -104,16 +104,24 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
   AHardwareBuffer_acquire(localGpuBuffer);
   lock.unlock();
 
+  // Pixel 6 (Mali) returns non-zero from AHardwareBuffer_lock on some frames and
+  // leaves the pointer null; without checking we used to SIGSEGV in memcpy.
   void* gpuData = nullptr;
   void* cpuData = nullptr;
-  AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
-  AHardwareBuffer_lock(localGpuBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, -1, nullptr, &gpuData);
-  memcpy(gpuData, cpuData, cameraBufferDescription.height * cameraBufferDescription.width * 4);
-  AHardwareBuffer_unlock(cameraBuffer, nullptr);
-  AHardwareBuffer_unlock(localGpuBuffer, nullptr);
+  int lockCam = AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
+  int lockGpu = AHardwareBuffer_lock(localGpuBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, -1, nullptr, &gpuData);
+  bool copied = lockCam == 0 && lockGpu == 0 && cpuData != nullptr && gpuData != nullptr;
+  if (copied) {
+    memcpy(gpuData, cpuData, cameraBufferDescription.height * cameraBufferDescription.width * 4);
+  } else {
+    LOGI("AHardwareBuffer_lock failed (cam=%d gpu=%d cpuData=%p gpuData=%p); dropping frame.",
+         lockCam, lockGpu, cpuData, gpuData);
+  }
+  if (lockCam == 0) AHardwareBuffer_unlock(cameraBuffer, nullptr);
+  if (lockGpu == 0) AHardwareBuffer_unlock(localGpuBuffer, nullptr);
 
   lock.lock();
-  if (renderer) {
+  if (renderer && copied) {
     renderer->processCameraFrame(localGpuBuffer, rotationDegrees, backCamera, frameId);
   }
   AHardwareBuffer_release(localGpuBuffer);

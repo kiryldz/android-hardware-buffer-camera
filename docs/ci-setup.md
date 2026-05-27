@@ -109,7 +109,7 @@ The same instrumented test that CI runs on FTL also runs via Gradle:
 python3 scripts/aggregate-traces.py \
   "app/build/outputs/connected_android_test_additional_output/releaseAndroidTest/connected/<device>" \
   benchmark/baselines/baseline-<gpu>.json \
-  --device-model "My Device" --gpu "Adreno 620" --ftl-model-id "redfin" --android-sdk 30
+  --device-model "My Device" --gpu "Adreno 642L" --ftl-model-id "a52sxq" --android-sdk 34
 ```
 
 For ad-hoc local measurement without going through Gradle, the Bash
@@ -142,8 +142,10 @@ surfaces as a CI break rather than silent baseline drift.
 
 | Job | Model | Device | GPU | API |
 |---|---|---|---|---|
-| `benchmark-adreno` | `redfin` | Pixel 5 | Adreno 620 (Snapdragon 765G) | 30 |
-| `benchmark-mali` | `oriole` | Pixel 6 | Mali-G78 (Google Tensor) | 32 |
+| `benchmark-adreno` | `a52sxq` | Galaxy A52s 5G | Adreno 642L (Snapdragon 778G) | 34 |
+| `benchmark-mali` | `oriole` | Pixel 6 | Mali-G78 (Google Tensor) | 33 |
+
+Adreno coverage on FTL Spark is awkward: the natural choice is `redfin` (Pixel 5 / Adreno 620), but FTL only offers it on Android 11 and perfetto's short-form CLI we depend on requires API 31+. `a52sxq` is the next-closest tier (mid-range Snapdragon) on a modern enough OS.
 
 To check current Spark availability:
 ```bash
