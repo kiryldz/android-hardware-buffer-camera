@@ -111,6 +111,9 @@ jobs:
           # FTL preserves the full on-device path under artifacts/, so our
           # /sdcard/Android/media/com.dz.camerafast/additional_test_output/
           # ends up at artifacts/sdcard/Android/media/<pkg>/additional_test_output/.
+          # gsutil cp -r requires the destination dir to exist when source
+          # resolves to multiple files.
+          mkdir -p trace-output-adreno
           gsutil -m cp -r \
             "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }}/a52sxq-34-en-portrait/artifacts/sdcard/Android/media/com.dz.camerafast/additional_test_output" \
             trace-output-adreno/
@@ -186,6 +189,7 @@ jobs:
 
       - name: Pull trace output from GCS
         run: |
+          mkdir -p trace-output-mali
           gsutil -m cp -r \
             "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }}/oriole-33-en-portrait/artifacts/sdcard/Android/media/com.dz.camerafast/additional_test_output" \
             trace-output-mali/
