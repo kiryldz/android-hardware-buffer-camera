@@ -108,15 +108,12 @@ jobs:
 
       - name: Pull trace output from GCS
         run: |
+          # FTL preserves the full on-device path under artifacts/, so our
+          # /sdcard/Android/media/com.dz.camerafast/additional_test_output/
+          # ends up at artifacts/sdcard/Android/media/<pkg>/additional_test_output/.
           gsutil -m cp -r \
-            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }}/a52sxq-34-en-portrait/artifacts/additional_test_output" \
-            trace-output-adreno/ || true
-          # Fallback: FTL sometimes puts files at a slightly different path.
-          if [ -z "$(find trace-output-adreno -name '*.perfetto-trace' -o -name '*.pftrace' 2>/dev/null | head -1)" ]; then
-            gsutil -m rsync -r \
-              "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }}/" \
-              trace-output-adreno/ || true
-          fi
+            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }}/a52sxq-34-en-portrait/artifacts/sdcard/Android/media/com.dz.camerafast/additional_test_output" \
+            trace-output-adreno/
 
       - name: Aggregate traces → results.json
         run: |
@@ -190,13 +187,8 @@ jobs:
       - name: Pull trace output from GCS
         run: |
           gsutil -m cp -r \
-            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }}/oriole-33-en-portrait/artifacts/additional_test_output" \
-            trace-output-mali/ || true
-          if [ -z "$(find trace-output-mali -name '*.perfetto-trace' -o -name '*.pftrace' 2>/dev/null | head -1)" ]; then
-            gsutil -m rsync -r \
-              "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }}/" \
-              trace-output-mali/ || true
-          fi
+            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }}/oriole-33-en-portrait/artifacts/sdcard/Android/media/com.dz.camerafast/additional_test_output" \
+            trace-output-mali/
 
       - name: Aggregate traces → results.json
         run: |

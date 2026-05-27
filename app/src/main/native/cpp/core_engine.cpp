@@ -90,7 +90,12 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
             .height = cameraBufferDescription.height,
             .layers = cameraBufferDescription.layers,
             .format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM,
-            .usage = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE | AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER,
+            // CPU_WRITE_OFTEN must be declared at allocation: strict drivers
+            // (Mali on Pixel 6) return success+null from AHardwareBuffer_lock
+            // for a CPU map of a buffer that wasn't allocated CPU-writable.
+            .usage = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE
+                   | AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER
+                   | AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN,
     };
     int res = AHardwareBuffer_allocate(&gpuBufferDescription, &gpuBuffer);
     LOGI("HW buffer from camera does not support AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE.");
@@ -104,8 +109,10 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
   AHardwareBuffer_acquire(localGpuBuffer);
   lock.unlock();
 
-  // Pixel 6 (Mali) returns non-zero from AHardwareBuffer_lock on some frames and
-  // leaves the pointer null; without checking we used to SIGSEGV in memcpy.
+  // Belt-and-suspenders: even though we now allocate the GPU buffer with
+  // CPU_WRITE_OFTEN, lock can still fail (e.g. on a transient HW error), and
+  // a stricter driver may legitimately return success+null. Drop the frame
+  // instead of memcpy'ing through a null pointer.
   void* gpuData = nullptr;
   void* cpuData = nullptr;
   int lockCam = AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
