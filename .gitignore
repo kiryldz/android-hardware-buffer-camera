@@ -14,3 +14,4 @@
 **/build
 /.idea
 /.cache
+.java-version

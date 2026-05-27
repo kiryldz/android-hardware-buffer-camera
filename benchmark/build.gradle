@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.test'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.dz.camerafast.benchmark'
+    compileSdk 35
+
+    defaultConfig {
+        minSdk 29
+        targetSdk 35
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+            debuggable false
+        }
+        debug {
+            debuggable true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    targetProjectPath = ':app'
+
+    // Required so the test module instruments the release variant of :app.
+    experimentalProperties["android.experimental.self-instrumenting"] = true
+}
+
+dependencies {
+    implementation "androidx.benchmark:benchmark-macro-junit4:1.3.4"
+    implementation "androidx.test.ext:junit:1.2.1"
+    implementation "androidx.test.uiautomator:uiautomator:2.3.0"
+    implementation "androidx.test:runner:1.6.2"
+}
+
+androidComponents {
+    beforeVariants(selector().all()) { variant ->
+        // Only arm64-v8a — the repo doesn't ship armeabi-v7a shaderc static lib.
+        variant.enable = variant.buildType == "release"
+    }
+}

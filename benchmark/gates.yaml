@@ -1,0 +1,56 @@
+# Tolerance gates for scripts/compare-baseline.py.
+# Derived from CLAUDE.md baseline findings (SM-F936B, 5×10s, arm64-v8a release).
+#
+# tight  — fail on >5% deviation in either direction
+# loose  — fail on >10% deviation in either direction
+# watch  — logged in step summary, never fails the check
+# skip   — not evaluated at all (high CV, single-outlier sensitive)
+
+tight:
+  tolerance_pct: 5
+  metrics:
+    - dz.frame_e2e.gl.avg
+    - dz.frame_e2e.gl.p90
+    - dz.frame_e2e.gl.p99
+    - dz.frame_e2e.vk.avg
+    - dz.frame_e2e.vk.p90
+    - dz.frame_e2e.vk.p99
+    - dz.frame_to_screen.gl.p90
+    - dz.frame_to_screen.vk.p90
+
+loose:
+  tolerance_pct: 10
+  metrics:
+    - dz.frame_render.gl.avg
+    - dz.frame_render.vk.avg
+    - dz.frame_native_proc.gl.avg
+    - dz.frame_native_proc.vk.avg
+    - dz.dropped_frames.gl
+    - dz.dropped_frames.vk
+
+watch:
+  metrics:
+    - dz.frame_native_proc.gl.p90
+    - dz.frame_native_proc.gl.p99
+    - dz.frame_native_proc.vk.p90
+    - dz.frame_native_proc.vk.p99
+    - dz.frame_render.gl.p90
+    - dz.frame_render.gl.p99
+    - dz.frame_render.vk.p90
+    - dz.frame_render.vk.p99
+
+skip:
+  # max values — single-outlier sensitive, 15-40% CV
+  - dz.frame_e2e.gl.max
+  - dz.frame_e2e.vk.max
+  - dz.frame_to_screen.gl.max
+  - dz.frame_to_screen.vk.max
+  - dz.frame_render.gl.max
+  - dz.frame_render.vk.max
+  - dz.frame_native_proc.gl.max
+  - dz.frame_native_proc.vk.max
+  # p50 on screen-facing stages — bimodal (submit-to-vsync alignment)
+  - dz.frame_e2e.gl.p50
+  - dz.frame_e2e.vk.p50
+  - dz.frame_to_screen.gl.p50
+  - dz.frame_to_screen.vk.p50

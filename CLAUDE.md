@@ -75,11 +75,14 @@ Design decisions worth remembering:
 | What you want | Skill / Script |
 |---|---|
 | One-shot frame-latency measurement (single N-second capture) | `scripts/measure-frame-latency.sh [seconds]` |
-| Establish a baseline with dispersion (5 × 10s by default, JSON output) | `scripts/baseline-frame-latency.sh` — invokable via `/frame-latency-baseline` |
+| Establish a local baseline with dispersion (5 × 10s by default, JSON output) | `scripts/baseline-frame-latency.sh` — invokable via `/frame-latency-baseline` |
+| Run macrobenchmark locally on a tethered device | `./gradlew :benchmark:connectedReleaseAndroidTest -Pandroid.injected.build.abi=arm64-v8a` |
+| Aggregate perfetto traces from a macrobenchmark run into results.json | `scripts/aggregate-traces.py <traces-dir> <output.json>` |
+| Compare results.json against a per-GPU baseline | `scripts/compare-baseline.py benchmark/baselines/baseline-<gpu>.json results.json` |
 | Build, install, launch, screenshot for visual verification of UI changes | `/verify-on-device` |
 | Discover Android-platform skills (camera, performance, perfetto-sql, etc.) | `vendor/android-skills/` submodule |
 
-All three scripts/skills assume a single ADB device. Set `ANDROID_SERIAL=<serial>` if multiple are attached. They auto-download Perfetto's `trace_processor` to `.cache/frame-latency/` (gitignored, ~25 MB) on first run.
+The bash scripts and the Gradle benchmark both emit / consume traces via `scripts/aggregate-traces.py`, so there is one place for stats math. All tools assume a single ADB device locally; set `ANDROID_SERIAL=<serial>` if multiple are attached. `trace_processor` is auto-downloaded to `.cache/frame-latency/` (gitignored, ~25 MB) on first use.
 
 ## Build / install gotchas
 
@@ -125,10 +128,24 @@ OpenGL is ~1.7 ms faster end-to-end on average (`frame_e2e` avg 13.25 vs 14.91),
 
 Slice counts are deterministic to within ±1 per 10 s window: ~298 frames per renderer (~30 fps from camera). A meaningful deviation in count is itself a regression signal.
 
-## Planned next steps (not yet implemented)
+## CI pipeline
 
-- **Macrobenchmark module** wrapping the same capture flow with `TraceSectionMetric`, so the run produces the JSON straight from a Gradle task rather than a bash wrapper. The `testing/testing-setup` skill in `vendor/android-skills/` is the entry point for scaffolding.
-- **CI gate via GitHub Actions** running the macrobenchmark on either Firebase Test Lab (real hardware, paid per device-minute) or Gradle Managed Devices (emulator on the GHA runner, free but GPU≠real). Likely GMD for speed, with periodic FTL runs for trend tracking. The PR check diffs against a `baseline.json` checked into the repo and fails on regressions outside the gates listed above.
+Three required GitHub Actions checks gate every PR:
+
+| Check | File | What it does |
+|---|---|---|
+| `build` | `.github/workflows/build.yml` | `assembleRelease` + `assembleReleaseAndroidTest` (arm64-v8a), uploads APK artifacts |
+| `benchmark-adreno` | `.github/workflows/benchmark.yml` | Runs `FrameLatencyBenchmark` on FTL Pixel 5 (Adreno 620), compares against `benchmark/baselines/baseline-adreno.json` |
+| `benchmark-mali` | `.github/workflows/benchmark.yml` | Same on FTL Pixel 6 (Mali-G78), compares against `benchmark/baselines/baseline-mali.json` |
+
+The compare step uses **two-sided tolerance gates** from `benchmark/gates.yaml` (tight ±5%, loose ±10%):
+- **Exit 1 (regression)** — blocks merge; fix the performance issue.
+- **Exit 2 (improvement)** — also blocks merge; copy the proposed JSON from the step summary into `benchmark/baselines/baseline-<gpu>.json` and commit.
+- **Exit 0** — all gated metrics within tolerance; green.
+
+**Device source:** Firebase Test Lab **Spark free tier** (5 physical runs/day, $0). See `docs/ci-setup.md` for one-time GCP setup (~15 min) and the swap path to BrowserStack Open Source Program (unlimited, apply separately).
+
+**Per-GPU baseline files** live under `benchmark/baselines/`. They are placeholders until the first FTL CI run seeds them — see `benchmark/baselines/README.md`.
 
 ## Other tooling worth knowing about
 

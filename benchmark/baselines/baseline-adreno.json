@@ -1,0 +1,13 @@
+{
+  "_placeholder": true,
+  "_note": "Replace with output from scripts/aggregate-traces.py after first FTL run. See benchmark/baselines/README.md.",
+  "device_model": "Pixel 5",
+  "gpu": "Adreno 620",
+  "ftl_model_id": "redfin",
+  "android_sdk": 33,
+  "captured_at": null,
+  "runs": 5,
+  "duration_s": 10,
+  "stages": {},
+  "counters": {}
+}

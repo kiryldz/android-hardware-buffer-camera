@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        Macrobenchmark requires a separate test APK. This manifest targets :app
+        (com.dz.camerafast) declared via targetProjectPath in build.gradle.
+    -->
+</manifest>

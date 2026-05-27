@@ -1,0 +1,222 @@
+name: Benchmark
+
+on:
+  pull_request:
+
+# Only one benchmark run per PR branch at a time; cancel the stale one.
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Job 1: build (same as build.yml but runs inside this workflow so the
+  # benchmark jobs can download the artifacts without a cross-workflow lookup) ──
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-read-only: true
+
+      - name: Build app + benchmark APKs (arm64-v8a only)
+        run: |
+          ./gradlew \
+            :app:assembleRelease \
+            :benchmark:assembleRelease \
+            -Pandroid.injected.build.abi=arm64-v8a \
+            --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          retention-days: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-release-apk
+          path: benchmark/build/outputs/apk/release/benchmark-release.apk
+          retention-days: 1
+
+  # ── Reusable FTL runner ───────────────────────────────────────────────────────
+  # Two parallel jobs — one per GPU family.  Both download the same APKs from
+  # the build job, run the benchmark on a different FTL device, then compare
+  # against the matching baseline file.
+
+  benchmark-adreno:
+    name: benchmark-adreno
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-release-apk
+          path: apks/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: benchmark-release-apk
+          path: apks/
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Run benchmark on FTL (Pixel 5 — Adreno 620)
+        run: |
+          # Spark free tier: 5 physical device-runs/day.
+          # redfin = Pixel 5, Snapdragon 765G, Adreno 620.
+          # --timeout is generous; the benchmark itself runs 5×10 s = 50 s of
+          # actual measurement plus Macrobenchmark harness overhead (~2 min total).
+          gcloud firebase test android run \
+            --type instrumentation \
+            --app apks/app-release.apk \
+            --test apks/benchmark-release.apk \
+            --device model=redfin,version=30,locale=en,orientation=portrait \
+            --timeout 10m \
+            --no-performance-metrics \
+            --directories-to-pull /sdcard/Android/media/com.dz.camerafast/additional_test_output \
+            --results-bucket ${{ secrets.GCP_RESULTS_BUCKET }} \
+            --results-dir benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }} \
+            --test-runner-class androidx.benchmark.junit4.AndroidBenchmarkRunner \
+            --test-targets "class com.dz.camerafast.benchmark.FrameLatencyBenchmark" \
+            --environment-variables \
+              additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output,\
+              dz.iterations=5,\
+              dz.duration.ms=10000 \
+            2>&1 | tee ftl-adreno.log
+
+      - name: Pull trace output from GCS
+        run: |
+          gsutil -m cp -r \
+            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }}/redfin-30-en-portrait/artifacts/additional_test_output" \
+            trace-output-adreno/ || true
+          # Fallback: FTL sometimes puts files at a slightly different path.
+          if [ -z "$(find trace-output-adreno -name '*.perfetto-trace' -o -name '*.pftrace' 2>/dev/null | head -1)" ]; then
+            gsutil -m rsync -r \
+              "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }}/" \
+              trace-output-adreno/ || true
+          fi
+
+      - name: Aggregate traces → results.json
+        run: |
+          python3 scripts/aggregate-traces.py \
+            trace-output-adreno \
+            results-adreno.json \
+            --device-model "Pixel 5" \
+            --gpu "Adreno 620" \
+            --ftl-model-id "redfin" \
+            --android-sdk 30 \
+            --duration-s 10
+
+      - name: Compare against baseline
+        run: |
+          python3 scripts/compare-baseline.py \
+            benchmark/baselines/baseline-adreno.json \
+            results-adreno.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-adreno
+          path: |
+            results-adreno.json
+            trace-output-adreno/
+            ftl-adreno.log
+          retention-days: 14
+
+  benchmark-mali:
+    name: benchmark-mali
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-release-apk
+          path: apks/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: benchmark-release-apk
+          path: apks/
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Run benchmark on FTL (Pixel 6 — Mali-G78)
+        run: |
+          # oriole = Pixel 6, Google Tensor, Mali-G78.
+          gcloud firebase test android run \
+            --type instrumentation \
+            --app apks/app-release.apk \
+            --test apks/benchmark-release.apk \
+            --device model=oriole,version=32,locale=en,orientation=portrait \
+            --timeout 10m \
+            --no-performance-metrics \
+            --directories-to-pull /sdcard/Android/media/com.dz.camerafast/additional_test_output \
+            --results-bucket ${{ secrets.GCP_RESULTS_BUCKET }} \
+            --results-dir benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }} \
+            --test-runner-class androidx.benchmark.junit4.AndroidBenchmarkRunner \
+            --test-targets "class com.dz.camerafast.benchmark.FrameLatencyBenchmark" \
+            --environment-variables \
+              additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output,\
+              dz.iterations=5,\
+              dz.duration.ms=10000 \
+            2>&1 | tee ftl-mali.log
+
+      - name: Pull trace output from GCS
+        run: |
+          gsutil -m cp -r \
+            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }}/oriole-32-en-portrait/artifacts/additional_test_output" \
+            trace-output-mali/ || true
+          if [ -z "$(find trace-output-mali -name '*.perfetto-trace' -o -name '*.pftrace' 2>/dev/null | head -1)" ]; then
+            gsutil -m rsync -r \
+              "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }}/" \
+              trace-output-mali/ || true
+          fi
+
+      - name: Aggregate traces → results.json
+        run: |
+          python3 scripts/aggregate-traces.py \
+            trace-output-mali \
+            results-mali.json \
+            --device-model "Pixel 6" \
+            --gpu "Mali-G78" \
+            --ftl-model-id "oriole" \
+            --android-sdk 32 \
+            --duration-s 10
+
+      - name: Compare against baseline
+        run: |
+          python3 scripts/compare-baseline.py \
+            benchmark/baselines/baseline-mali.json \
+            results-mali.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-mali
+          path: |
+            results-mali.json
+            trace-output-mali/
+            ftl-mali.log
+          retention-days: 14
