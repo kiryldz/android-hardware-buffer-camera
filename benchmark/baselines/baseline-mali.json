@@ -4,7 +4,7 @@
   "device_model": "Pixel 6",
   "gpu": "Mali-G78",
   "ftl_model_id": "oriole",
-  "android_sdk": 32,
+  "android_sdk": 33,
   "captured_at": null,
   "runs": 5,
   "duration_s": 10,
