@@ -89,6 +89,7 @@ jobs:
           # redfin = Pixel 5, Snapdragon 765G, Adreno 620.
           # --timeout is generous; the benchmark itself runs 5×10 s = 50 s of
           # actual measurement plus Macrobenchmark harness overhead (~2 min total).
+          set -o pipefail
           gcloud firebase test android run \
             --type instrumentation \
             --app apks/app-release.apk \
@@ -101,10 +102,7 @@ jobs:
             --results-dir benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }} \
             --test-runner-class androidx.benchmark.junit4.AndroidBenchmarkRunner \
             --test-targets "class com.dz.camerafast.benchmark.FrameLatencyBenchmark" \
-            --environment-variables \
-              additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output,\
-              dz.iterations=5,\
-              dz.duration.ms=10000 \
+            --environment-variables "additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output,dz.iterations=5,dz.duration.ms=10000" \
             2>&1 | tee ftl-adreno.log
 
       - name: Pull trace output from GCS
@@ -172,6 +170,7 @@ jobs:
       - name: Run benchmark on FTL (Pixel 6 — Mali-G78)
         run: |
           # oriole = Pixel 6, Google Tensor, Mali-G78.
+          set -o pipefail
           gcloud firebase test android run \
             --type instrumentation \
             --app apks/app-release.apk \
@@ -184,10 +183,7 @@ jobs:
             --results-dir benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }} \
             --test-runner-class androidx.benchmark.junit4.AndroidBenchmarkRunner \
             --test-targets "class com.dz.camerafast.benchmark.FrameLatencyBenchmark" \
-            --environment-variables \
-              additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output,\
-              dz.iterations=5,\
-              dz.duration.ms=10000 \
+            --environment-variables "additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output,dz.iterations=5,dz.duration.ms=10000" \
             2>&1 | tee ftl-mali.log
 
       - name: Pull trace output from GCS
