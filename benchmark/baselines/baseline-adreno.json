@@ -1,13 +1,102 @@
 {
-  "_placeholder": true,
-  "_note": "Replace with output from scripts/aggregate-traces.py after first FTL run. See benchmark/baselines/README.md.",
   "device_model": "Galaxy A52s 5G",
   "gpu": "Adreno 642L",
   "ftl_model_id": "a52sxq",
   "android_sdk": 34,
-  "captured_at": null,
+  "captured_at": "2026-05-28T09:35:57.210977Z",
   "runs": 5,
   "duration_s": 10,
-  "stages": {},
+  "stages": {
+    "dz.frame_e2e.gl": {
+      "n": 522,
+      "avg": 13.879,
+      "p50": 13.585,
+      "p90": 20.818,
+      "p99": 23.973,
+      "max": 27.852,
+      "stdev": 5.209
+    },
+    "dz.frame_e2e.vk": {
+      "n": 520,
+      "avg": 15.253,
+      "p50": 15.226,
+      "p90": 22.069,
+      "p99": 25.937,
+      "max": 31.134,
+      "stdev": 5.21
+    },
+    "dz.frame_native_proc.gl": {
+      "n": 522,
+      "avg": 0.866,
+      "p50": 0.812,
+      "p90": 1.31,
+      "p99": 2.177,
+      "max": 2.746,
+      "stdev": 0.388
+    },
+    "dz.frame_native_proc.vk": {
+      "n": 522,
+      "avg": 1.418,
+      "p50": 1.139,
+      "p90": 2.336,
+      "p99": 4.239,
+      "max": 5.547,
+      "stdev": 0.776
+    },
+    "dz.frame_render.gl": {
+      "n": 522,
+      "avg": 0.57,
+      "p50": 0.487,
+      "p90": 0.926,
+      "p99": 1.446,
+      "max": 2.074,
+      "stdev": 0.275
+    },
+    "dz.frame_render.vk": {
+      "n": 522,
+      "avg": 1.516,
+      "p50": 1.471,
+      "p90": 1.919,
+      "p99": 2.463,
+      "max": 5.11,
+      "stdev": 0.375
+    },
+    "dz.frame_to_native.gl": {
+      "n": 522,
+      "avg": 2.252,
+      "p50": 2.012,
+      "p90": 3.155,
+      "p99": 5.171,
+      "max": 10.308,
+      "stdev": 0.873
+    },
+    "dz.frame_to_native.vk": {
+      "n": 521,
+      "avg": 2.261,
+      "p50": 1.955,
+      "p90": 3.278,
+      "p99": 5.682,
+      "max": 10.567,
+      "stdev": 0.938
+    },
+    "dz.frame_to_screen.gl": {
+      "n": 522,
+      "avg": 10.715,
+      "p50": 10.701,
+      "p90": 17.408,
+      "p99": 19.702,
+      "max": 20.608,
+      "stdev": 4.959
+    },
+    "dz.frame_to_screen.vk": {
+      "n": 522,
+      "avg": 11.517,
+      "p50": 11.607,
+      "p90": 18.116,
+      "p99": 20.089,
+      "max": 24.571,
+      "stdev": 4.948
+    }
+  },
   "counters": {}
 }

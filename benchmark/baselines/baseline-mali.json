@@ -1,13 +1,102 @@
 {
-  "_placeholder": true,
-  "_note": "Replace with output from scripts/aggregate-traces.py after first FTL run. See benchmark/baselines/README.md.",
   "device_model": "Pixel 6",
   "gpu": "Mali-G78",
   "ftl_model_id": "oriole",
   "android_sdk": 33,
-  "captured_at": null,
+  "captured_at": "2026-05-28T09:35:26.604099Z",
   "runs": 5,
   "duration_s": 10,
-  "stages": {},
+  "stages": {
+    "dz.frame_e2e.gl": {
+      "n": 408,
+      "avg": 12.793,
+      "p50": 12.892,
+      "p90": 18.78,
+      "p99": 22.248,
+      "max": 24.563,
+      "stdev": 4.48
+    },
+    "dz.frame_e2e.vk": {
+      "n": 407,
+      "avg": 13.811,
+      "p50": 13.98,
+      "p90": 19.427,
+      "p99": 23.12,
+      "max": 24.399,
+      "stdev": 4.446
+    },
+    "dz.frame_native_proc.gl": {
+      "n": 408,
+      "avg": 0.87,
+      "p50": 0.802,
+      "p90": 1.349,
+      "p99": 2.982,
+      "max": 7.614,
+      "stdev": 0.582
+    },
+    "dz.frame_native_proc.vk": {
+      "n": 407,
+      "avg": 1.179,
+      "p50": 1.105,
+      "p90": 1.737,
+      "p99": 3.396,
+      "max": 5.003,
+      "stdev": 0.586
+    },
+    "dz.frame_render.gl": {
+      "n": 408,
+      "avg": 0.972,
+      "p50": 0.804,
+      "p90": 1.664,
+      "p99": 3.904,
+      "max": 5.381,
+      "stdev": 0.645
+    },
+    "dz.frame_render.vk": {
+      "n": 406,
+      "avg": 1.884,
+      "p50": 1.838,
+      "p90": 2.621,
+      "p99": 3.826,
+      "max": 5.986,
+      "stdev": 0.665
+    },
+    "dz.frame_to_native.gl": {
+      "n": 409,
+      "avg": 0.961,
+      "p50": 0.867,
+      "p90": 1.469,
+      "p99": 2.577,
+      "max": 3.14,
+      "stdev": 0.46
+    },
+    "dz.frame_to_native.vk": {
+      "n": 408,
+      "avg": 0.952,
+      "p50": 0.887,
+      "p90": 1.384,
+      "p99": 2.715,
+      "max": 3.972,
+      "stdev": 0.452
+    },
+    "dz.frame_to_screen.gl": {
+      "n": 407,
+      "avg": 10.938,
+      "p50": 11.082,
+      "p90": 16.936,
+      "p99": 20.017,
+      "max": 20.565,
+      "stdev": 4.394
+    },
+    "dz.frame_to_screen.vk": {
+      "n": 407,
+      "avg": 11.647,
+      "p50": 11.826,
+      "p90": 17.363,
+      "p99": 20.494,
+      "max": 21.208,
+      "stdev": 4.347
+    }
+  },
   "counters": {}
 }
