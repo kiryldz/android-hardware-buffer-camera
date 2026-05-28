@@ -1,0 +1,80 @@
+# Tolerance gates for scripts/compare-baseline.py.
+# Derived from CLAUDE.md baseline findings (SM-F936B, 5×10s, arm64-v8a release).
+#
+# Each gated tier has both a relative (tolerance_pct) and an absolute
+# (abs_floor_ms, or abs_floor_count for counter metrics) threshold. A metric
+# PASSES if EITHER threshold is satisfied:
+#   |Δ%|  ≤ tolerance_pct   OR   |Δabs| ≤ abs_floor
+# This protects sub-ms metrics from spurious red on small absolute jitter
+# (e.g. a 0.1ms shift on a 0.7ms baseline is +14% but below any frame-budget
+# meaningful threshold).
+#
+# tight  — fail on >5%  AND >1.5 ms deviation in either direction
+# loose  — fail on >10% AND >0.5 ms (or >5 frames for counters)
+# watch  — logged in step summary, never fails the check
+# skip   — not evaluated at all (high CV, single-outlier sensitive)
+#
+# Why 1.5 ms on tight: FTL Pixel 6 / Galaxy A52s show ~1 ms run-to-run drift
+# on frame_e2e even between identical commits (vs ~0.25 ms on local SM-F936B,
+# the source of CLAUDE.md's baseline calibration). 1.5 ms absorbs that
+# headroom while still catching meaningful >1.5 ms regressions on a 13-25 ms
+# baseline (which is what we actually want to detect).
+
+tight:
+  tolerance_pct: 5
+  abs_floor_ms: 1.5
+  metrics:
+    - dz.frame_e2e.gl.p90
+    - dz.frame_e2e.vk.p90
+    - dz.frame_to_screen.gl.p90
+    - dz.frame_to_screen.vk.p90
+
+loose:
+  tolerance_pct: 10
+  abs_floor_ms: 0.5
+  abs_floor_count: 5
+  metrics:
+    # p99 is the worst 1% of frames per iteration — inherently outlier-sensitive
+    # and observably the noisiest tight-tier metric on FTL devices. Loose
+    # tolerance (±10% / ±0.5 ms) still catches real worst-case regressions.
+    - dz.frame_e2e.gl.p99
+    - dz.frame_e2e.vk.p99
+    - dz.dropped_frames.gl
+    - dz.dropped_frames.vk
+
+watch:
+  # avg is not representative — one slow frame skews the mean across hundreds
+  # of frames per iteration. p90 captures the steady-state, p99 the tail.
+  # Keep avg visible (under the collapsible "Watch-only" section) but never
+  # gate on it.
+  metrics:
+    - dz.frame_e2e.gl.avg
+    - dz.frame_e2e.vk.avg
+    - dz.frame_render.gl.avg
+    - dz.frame_render.vk.avg
+    - dz.frame_native_proc.gl.avg
+    - dz.frame_native_proc.vk.avg
+    - dz.frame_native_proc.gl.p90
+    - dz.frame_native_proc.gl.p99
+    - dz.frame_native_proc.vk.p90
+    - dz.frame_native_proc.vk.p99
+    - dz.frame_render.gl.p90
+    - dz.frame_render.gl.p99
+    - dz.frame_render.vk.p90
+    - dz.frame_render.vk.p99
+
+skip:
+  # max values — single-outlier sensitive, 15-40% CV
+  - dz.frame_e2e.gl.max
+  - dz.frame_e2e.vk.max
+  - dz.frame_to_screen.gl.max
+  - dz.frame_to_screen.vk.max
+  - dz.frame_render.gl.max
+  - dz.frame_render.vk.max
+  - dz.frame_native_proc.gl.max
+  - dz.frame_native_proc.vk.max
+  # p50 on screen-facing stages — bimodal (submit-to-vsync alignment)
+  - dz.frame_e2e.gl.p50
+  - dz.frame_e2e.vk.p50
+  - dz.frame_to_screen.gl.p50
+  - dz.frame_to_screen.vk.p50

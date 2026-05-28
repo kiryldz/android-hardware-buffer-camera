@@ -6,6 +6,11 @@ plugins {
 android {
     compileSdk 35
 
+    // Frame-latency capture (androidTest/.../FrameLatencyCapture.kt) must attach
+    // to a profileable, non-debug APK. The release variant declares
+    // <profileable android:shell="true"/> in AndroidManifest.xml.
+    testBuildType = "release"
+
     defaultConfig {
         applicationId "com.dz.camerafast"
         minSdk 29
@@ -84,4 +89,9 @@ dependencies {
 
     debugImplementation "androidx.compose.ui:ui-tooling:$compose_version"
     implementation "androidx.compose.ui:ui-tooling-preview:$compose_version"
+
+    // Frame-latency capture (com.dz.camerafast.perf.FrameLatencyCapture).
+    androidTestImplementation "junit:junit:4.13.2"
+    androidTestImplementation "androidx.test.ext:junit:1.3.0"
+    androidTestImplementation "androidx.test:runner:1.7.0"
 }

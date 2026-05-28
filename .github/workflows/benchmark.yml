@@ -1,0 +1,300 @@
+name: Benchmark
+
+on:
+  pull_request:
+
+# Only one benchmark run per PR branch at a time; cancel the stale one.
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Job 1: build (same as build.yml but runs inside this workflow so the
+  # benchmark jobs can download the artifacts without a cross-workflow lookup) ──
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-read-only: true
+
+      - name: Build app + androidTest APKs (arm64-v8a only)
+        run: |
+          ./gradlew \
+            :app:assembleRelease \
+            :app:assembleReleaseAndroidTest \
+            -Pandroid.injected.build.abi=arm64-v8a \
+            --stacktrace
+
+      - name: Stage APKs for upload
+        run: |
+          mkdir -p staged-apks
+          find app/build -name "app-release.apk"             -exec cp {} staged-apks/app-release.apk \;
+          find app/build -name "app-release-androidTest.apk" -exec cp {} staged-apks/app-release-androidTest.apk \;
+          ls -lh staged-apks/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: staged-apks/app-release.apk
+          retention-days: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-androidTest-apk
+          path: staged-apks/app-release-androidTest.apk
+          retention-days: 1
+
+  # ── Reusable FTL runner ───────────────────────────────────────────────────────
+  # Two parallel jobs — one per GPU family.  Both download the same APKs from
+  # the build job, run the benchmark on a different FTL device, then compare
+  # against the matching baseline file.
+
+  benchmark-adreno:
+    name: benchmark-adreno
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-release-apk
+          path: apks/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-release-androidTest-apk
+          path: apks/
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Run frame-latency capture on FTL (Galaxy A52s — Adreno 642L)
+        run: |
+          # Spark free tier: 5 physical device-runs/day.
+          # a52sxq = Galaxy A52s 5G, Snapdragon 778G, Adreno 642L.
+          # Picked over redfin (Pixel 5 / Adreno 620) because redfin is locked
+          # to Android 11 on FTL and perfetto's short-form CLI requires API 31+.
+          # --timeout is generous; the test itself runs 5×10 s = 50 s of actual
+          # capture, plus app warm-up and FTL setup overhead (~2 min total).
+          set -o pipefail
+          gcloud firebase test android run \
+            --type instrumentation \
+            --app apks/app-release.apk \
+            --test apks/app-release-androidTest.apk \
+            --device model=a52sxq,version=34,locale=en,orientation=portrait \
+            --timeout 10m \
+            --directories-to-pull /sdcard/Android/media/com.dz.camerafast/additional_test_output \
+            --results-bucket ${{ secrets.GCP_RESULTS_BUCKET }} \
+            --results-dir benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }} \
+            --test-runner-class androidx.test.runner.AndroidJUnitRunner \
+            --test-targets "class com.dz.camerafast.perf.FrameLatencyCapture" \
+            --environment-variables "additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output,dz.iterations=5,dz.duration.ms=10000" \
+            2>&1 | tee ftl-adreno.log
+
+      - name: Pull trace output from GCS
+        run: |
+          # FTL preserves the full on-device path under artifacts/, so our
+          # /sdcard/Android/media/com.dz.camerafast/additional_test_output/
+          # ends up at artifacts/sdcard/Android/media/<pkg>/additional_test_output/.
+          # gsutil cp -r requires the destination dir to exist when source
+          # resolves to multiple files.
+          mkdir -p trace-output-adreno
+          gsutil -m cp -r \
+            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-adreno-${{ github.run_id }}-${{ github.run_attempt }}/a52sxq-34-en-portrait/artifacts/sdcard/Android/media/com.dz.camerafast/additional_test_output" \
+            trace-output-adreno/
+
+      - name: Aggregate traces → results.json
+        run: |
+          python3 scripts/aggregate-traces.py \
+            trace-output-adreno \
+            results-adreno.json \
+            --device-model "Galaxy A52s 5G" \
+            --gpu "Adreno 642L" \
+            --ftl-model-id "a52sxq" \
+            --android-sdk 34 \
+            --duration-s 10
+
+      - name: Compare against baseline
+        run: |
+          python3 scripts/compare-baseline.py \
+            benchmark/baselines/baseline-adreno.json \
+            results-adreno.json \
+            --output-md comparison-adreno.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-adreno
+          path: |
+            results-adreno.json
+            comparison-adreno.md
+            trace-output-adreno/
+            ftl-adreno.log
+          retention-days: 14
+
+  benchmark-mali:
+    name: benchmark-mali
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-release-apk
+          path: apks/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-release-androidTest-apk
+          path: apks/
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Run frame-latency capture on FTL (Pixel 6 — Mali-G78)
+        run: |
+          # oriole = Pixel 6, Google Tensor, Mali-G78. Android 13 (API 33) so
+          # perfetto's short-form CLI is available.
+          set -o pipefail
+          gcloud firebase test android run \
+            --type instrumentation \
+            --app apks/app-release.apk \
+            --test apks/app-release-androidTest.apk \
+            --device model=oriole,version=33,locale=en,orientation=portrait \
+            --timeout 10m \
+            --directories-to-pull /sdcard/Android/media/com.dz.camerafast/additional_test_output \
+            --results-bucket ${{ secrets.GCP_RESULTS_BUCKET }} \
+            --results-dir benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }} \
+            --test-runner-class androidx.test.runner.AndroidJUnitRunner \
+            --test-targets "class com.dz.camerafast.perf.FrameLatencyCapture" \
+            --environment-variables "additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output,dz.iterations=5,dz.duration.ms=10000" \
+            2>&1 | tee ftl-mali.log
+
+      - name: Pull trace output from GCS
+        run: |
+          mkdir -p trace-output-mali
+          gsutil -m cp -r \
+            "gs://${{ secrets.GCP_RESULTS_BUCKET }}/benchmark-mali-${{ github.run_id }}-${{ github.run_attempt }}/oriole-33-en-portrait/artifacts/sdcard/Android/media/com.dz.camerafast/additional_test_output" \
+            trace-output-mali/
+
+      - name: Aggregate traces → results.json
+        run: |
+          python3 scripts/aggregate-traces.py \
+            trace-output-mali \
+            results-mali.json \
+            --device-model "Pixel 6" \
+            --gpu "Mali-G78" \
+            --ftl-model-id "oriole" \
+            --android-sdk 33 \
+            --duration-s 10
+
+      - name: Compare against baseline
+        run: |
+          python3 scripts/compare-baseline.py \
+            benchmark/baselines/baseline-mali.json \
+            results-mali.json \
+            --output-md comparison-mali.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-mali
+          path: |
+            results-mali.json
+            comparison-mali.md
+            trace-output-mali/
+            ftl-mali.log
+          retention-days: 14
+
+  # ── PR comment with the consolidated p50/p90/p99 delta table ──────────────
+  # Runs after both benchmark jobs regardless of their pass/fail status so a
+  # regression still produces a visible comment (showing which metric tripped).
+  # PR-merge gating remains on the individual benchmark-{adreno,mali} jobs.
+  comment:
+    name: comment
+    needs: [benchmark-adreno, benchmark-mali]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: benchmark-results-adreno
+          path: adreno/
+
+      - uses: actions/download-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: benchmark-results-mali
+          path: mali/
+
+      - name: Build comment body
+        run: |
+          {
+            echo '<!-- benchmark-comment -->'
+            echo '## Frame-latency benchmark'
+            echo
+            echo '### Adreno (Galaxy A52s 5G, Adreno 642L)'
+            if [ -f adreno/comparison-adreno.md ]; then
+              cat adreno/comparison-adreno.md
+            else
+              echo '> ❌ benchmark-adreno did not produce a comparison — see the workflow run for details.'
+            fi
+            echo
+            echo '### Mali (Pixel 6, Mali-G78)'
+            if [ -f mali/comparison-mali.md ]; then
+              cat mali/comparison-mali.md
+            else
+              echo '> ❌ benchmark-mali did not produce a comparison — see the workflow run for details.'
+            fi
+            echo
+            echo '---'
+            echo
+            echo 'To re-seed baselines from this run, manually trigger the **Baselines** workflow under [Actions → Baselines](../../actions/workflows/baselines.yml) and pick this branch as the ref. (Only visible after the workflow file lands on the default branch — GitHub limitation for `workflow_dispatch`.)'
+          } > comment.md
+          echo "--- preview ---"
+          cat comment.md
+
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('comment.md', 'utf8');
+            const marker = '<!-- benchmark-comment -->';
+            const pr = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: pr,
+            });
+            const existing = comments.find(c => (c.body || '').includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                ...context.repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: pr, body,
+              });
+            }

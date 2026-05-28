@@ -75,11 +75,14 @@ Design decisions worth remembering:
 | What you want | Skill / Script |
 |---|---|
 | One-shot frame-latency measurement (single N-second capture) | `scripts/measure-frame-latency.sh [seconds]` |
-| Establish a baseline with dispersion (5 × 10s by default, JSON output) | `scripts/baseline-frame-latency.sh` — invokable via `/frame-latency-baseline` |
+| Establish a local baseline with dispersion (5 × 10s by default, JSON output) | `scripts/baseline-frame-latency.sh` — invokable via `/frame-latency-baseline` |
+| Run the CI capture instrumentation test locally on a tethered device | `./gradlew :app:connectedReleaseAndroidTest -Pandroid.injected.build.abi=arm64-v8a -Pandroid.testInstrumentationRunnerArguments.additionalTestOutputDir=/sdcard/Android/media/com.dz.camerafast/additional_test_output` |
+| Aggregate perfetto traces (from FTL or local connected test) into results.json | `scripts/aggregate-traces.py <traces-dir> <output.json>` |
+| Compare results.json against a per-GPU baseline | `scripts/compare-baseline.py benchmark/baselines/baseline-<gpu>.json results.json` |
 | Build, install, launch, screenshot for visual verification of UI changes | `/verify-on-device` |
 | Discover Android-platform skills (camera, performance, perfetto-sql, etc.) | `vendor/android-skills/` submodule |
 
-All three scripts/skills assume a single ADB device. Set `ANDROID_SERIAL=<serial>` if multiple are attached. They auto-download Perfetto's `trace_processor` to `.cache/frame-latency/` (gitignored, ~25 MB) on first run.
+The bash scripts and the `:app/androidTest` capture (`FrameLatencyCapture`) both emit `.pftrace` files that `scripts/aggregate-traces.py` consumes, so there is one place for stats math. All tools assume a single ADB device locally; set `ANDROID_SERIAL=<serial>` if multiple are attached. `trace_processor` is auto-downloaded to `.cache/frame-latency/` (gitignored, ~25 MB) on first use.
 
 ## Build / install gotchas
 
@@ -118,17 +121,33 @@ OpenGL is ~1.7 ms faster end-to-end on average (`frame_e2e` avg 13.25 vs 14.91),
 **Most of `frame_to_screen` is vsync wait.** `frame_to_screen.gl.avg ≈ 10.9 ms` but only ~0.57 ms of that is actual GL command submission (`frame_render.gl.avg`); the remaining ~10.3 ms is Choreographer/vsync wait. Same shape for Vulkan: ~11.7 ms total vs ~1.76 ms of work. Optimizations that shave µs off GL/VK commands won't move the e2e needle until the vsync wait is what we're trying to displace (e.g. higher refresh rate, lower-latency presentation extensions).
 
 **Which metrics to gate PRs on:**
-- **Tight (±5%)**: `frame_e2e.{gl,vk}.{avg, p90, p99}`, `frame_to_screen.{gl,vk}.p90`. All sub-3% CV.
-- **Looser (±10%)**: `frame_render.{gl,vk}.avg`, `frame_native_proc.{gl,vk}.avg`. CV 2–7%.
-- **Watch only, no gate**: `frame_native_proc.{gl,vk}.{p90, p99}` and `frame_render.{gl,vk}.{p90, p99}` (5–25% CV — single-tail-sample noise).
+- **Tight (±5% AND ±1.5 ms)**: `frame_e2e.{gl,vk}.p90`, `frame_to_screen.{gl,vk}.p90`. All sub-3% CV locally; the 1.5 ms floor is calibrated for FTL Pixel 6 / Galaxy A52s, which drift ~1 ms run-to-run on identical commits (vs ~0.25 ms on local SM-F936B).
+- **Looser (±10% AND ±0.5 ms, or ±5 frames for counters)**: `frame_e2e.{gl,vk}.p99`, `dropped_frames.{gl,vk}`. CV 2–7%. p99 is the worst 1% of frames per iteration — inherently outlier-sensitive and observed to be the noisiest tight-tier metric on FTL, so it lives in loose despite frame_e2e.p90 staying tight.
+- **Watch only, no gate**: every `avg` (means are skewed by one slow frame and not representative — p90 captures steady state, p99 the tail), plus `frame_native_proc.{gl,vk}.{p90, p99}` and `frame_render.{gl,vk}.{p90, p99}` (5–25% CV — single-tail-sample noise).
 - **Skip entirely**: every `max` (single-outlier sensitive, 15–40% CV), and `p50` on screen-facing stages (bimodal — submit-to-vsync alignment).
+
+**Dual gate (relative + absolute floor).** Each gated tier has *both* a percentage tolerance and an absolute floor. A metric **passes** when *either* threshold is satisfied — `|Δ%| ≤ tolerance_pct` **OR** `|Δabs| ≤ abs_floor`. The absolute floor exists because sub-ms metrics like `frame_native_proc.avg` (~0.7 ms baseline) blow up to +14% on a 0.1 ms shift that is below any frame-budget significance. Real regressions exceed both thresholds; pure relative noise on tiny absolutes is filtered out.
 
 Slice counts are deterministic to within ±1 per 10 s window: ~298 frames per renderer (~30 fps from camera). A meaningful deviation in count is itself a regression signal.
 
-## Planned next steps (not yet implemented)
+## CI pipeline
 
-- **Macrobenchmark module** wrapping the same capture flow with `TraceSectionMetric`, so the run produces the JSON straight from a Gradle task rather than a bash wrapper. The `testing/testing-setup` skill in `vendor/android-skills/` is the entry point for scaffolding.
-- **CI gate via GitHub Actions** running the macrobenchmark on either Firebase Test Lab (real hardware, paid per device-minute) or Gradle Managed Devices (emulator on the GHA runner, free but GPU≠real). Likely GMD for speed, with periodic FTL runs for trend tracking. The PR check diffs against a `baseline.json` checked into the repo and fails on regressions outside the gates listed above.
+Three required GitHub Actions checks gate every PR:
+
+| Check | File | What it does |
+|---|---|---|
+| `build` | `.github/workflows/build.yml` | `assembleRelease` + `assembleReleaseAndroidTest` (arm64-v8a), uploads APK artifacts |
+| `benchmark-adreno` | `.github/workflows/benchmark.yml` | Runs `com.dz.camerafast.perf.FrameLatencyCapture` (an `:app/androidTest` instrumentation test that drives N×Ds Perfetto captures) on FTL Galaxy A52s 5G (Adreno 642L, API 34), compares against `benchmark/baselines/baseline-adreno.json` |
+| `benchmark-mali` | `.github/workflows/benchmark.yml` | Same on FTL Pixel 6 (Mali-G78, API 33), compares against `benchmark/baselines/baseline-mali.json` |
+
+The compare step uses **two-sided tolerance gates** from `benchmark/gates.yaml` (tight ±5%/±1.5 ms, loose ±10%/±0.5 ms — pass if EITHER bound holds):
+- **Exit 1 (regression)** — blocks merge; fix the performance issue.
+- **Exit 2 (improvement)** — also blocks merge; copy the proposed JSON from the step summary into `benchmark/baselines/baseline-<gpu>.json` and commit.
+- **Exit 0** — all gated metrics within tolerance; green.
+
+**Device source:** Firebase Test Lab **Spark free tier** (5 physical runs/day, $0). See `docs/ci-setup.md` for one-time GCP setup (~15 min) and the swap path to BrowserStack Open Source Program (unlimited, apply separately).
+
+**Per-GPU baseline files** live under `benchmark/baselines/`. They are placeholders until the first FTL CI run seeds them — see `benchmark/baselines/README.md`.
 
 ## Other tooling worth knowing about
 

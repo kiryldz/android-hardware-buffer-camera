@@ -90,7 +90,12 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
             .height = cameraBufferDescription.height,
             .layers = cameraBufferDescription.layers,
             .format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM,
-            .usage = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE | AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER,
+            // CPU_WRITE_OFTEN must be declared at allocation: strict drivers
+            // (Mali on Pixel 6) return success+null from AHardwareBuffer_lock
+            // for a CPU map of a buffer that wasn't allocated CPU-writable.
+            .usage = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE
+                   | AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER
+                   | AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN,
     };
     int res = AHardwareBuffer_allocate(&gpuBufferDescription, &gpuBuffer);
     LOGI("HW buffer from camera does not support AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE.");
@@ -104,16 +109,26 @@ void CoreEngine::nativeSendCameraFrame(JNIEnv &env, const jni::Object<HardwareBu
   AHardwareBuffer_acquire(localGpuBuffer);
   lock.unlock();
 
+  // Belt-and-suspenders: even though we now allocate the GPU buffer with
+  // CPU_WRITE_OFTEN, lock can still fail (e.g. on a transient HW error), and
+  // a stricter driver may legitimately return success+null. Drop the frame
+  // instead of memcpy'ing through a null pointer.
   void* gpuData = nullptr;
   void* cpuData = nullptr;
-  AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
-  AHardwareBuffer_lock(localGpuBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, -1, nullptr, &gpuData);
-  memcpy(gpuData, cpuData, cameraBufferDescription.height * cameraBufferDescription.width * 4);
-  AHardwareBuffer_unlock(cameraBuffer, nullptr);
-  AHardwareBuffer_unlock(localGpuBuffer, nullptr);
+  int lockCam = AHardwareBuffer_lock(cameraBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &cpuData);
+  int lockGpu = AHardwareBuffer_lock(localGpuBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, -1, nullptr, &gpuData);
+  bool copied = lockCam == 0 && lockGpu == 0 && cpuData != nullptr && gpuData != nullptr;
+  if (copied) {
+    memcpy(gpuData, cpuData, cameraBufferDescription.height * cameraBufferDescription.width * 4);
+  } else {
+    LOGI("AHardwareBuffer_lock failed (cam=%d gpu=%d cpuData=%p gpuData=%p); dropping frame.",
+         lockCam, lockGpu, cpuData, gpuData);
+  }
+  if (lockCam == 0) AHardwareBuffer_unlock(cameraBuffer, nullptr);
+  if (lockGpu == 0) AHardwareBuffer_unlock(localGpuBuffer, nullptr);
 
   lock.lock();
-  if (renderer) {
+  if (renderer && copied) {
     renderer->processCameraFrame(localGpuBuffer, rotationDegrees, backCamera, frameId);
   }
   AHardwareBuffer_release(localGpuBuffer);
