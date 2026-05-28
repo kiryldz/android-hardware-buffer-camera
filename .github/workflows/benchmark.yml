@@ -273,7 +273,7 @@ jobs:
             echo
             echo '---'
             echo
-            echo 'To re-seed baselines from this run, manually trigger the **Baselines** workflow on this branch.'
+            echo 'To re-seed baselines from this run, manually trigger the **Baselines** workflow under [Actions → Baselines](../../actions/workflows/baselines.yml) and pick this branch as the ref. (Only visible after the workflow file lands on the default branch — GitHub limitation for `workflow_dispatch`.)'
           } > comment.md
           echo "--- preview ---"
           cat comment.md

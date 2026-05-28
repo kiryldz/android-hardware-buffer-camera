@@ -81,19 +81,22 @@ def load_gates(path: str) -> dict:
     with open(path) as f:
         raw = _parse_yaml(f.read())
 
-    gates: dict[str, tuple[str, float | None]] = {}  # metric_key -> (tier, tolerance_pct)
+    # metric_key -> (tier, tolerance_pct, abs_floor_ms, abs_floor_count)
+    gates: dict[str, tuple[str, float | None, float, float]] = {}
 
     for tier in ("tight", "loose"):
         block = raw.get(tier, {})
         tol = float(block.get("tolerance_pct", 5 if tier == "tight" else 10))
+        floor_ms = float(block.get("abs_floor_ms", 0.0))
+        floor_ct = float(block.get("abs_floor_count", 0.0))
         for m in block.get("metrics", []):
-            gates[m] = (tier, tol)
+            gates[m] = (tier, tol, floor_ms, floor_ct)
 
     for m in raw.get("watch", {}).get("metrics", []) if isinstance(raw.get("watch"), dict) else []:
-        gates[m] = ("watch", None)
+        gates[m] = ("watch", None, 0.0, 0.0)
 
     for m in (raw.get("skip") or []):
-        gates[m] = ("skip", None)
+        gates[m] = ("skip", None, 0.0, 0.0)
 
     return gates
 
@@ -140,7 +143,8 @@ def compare(baseline: dict, results: dict, gates: dict) -> tuple[int, list[dict]
     has_improvement = False
 
     for key in all_keys:
-        tier, tol = gates.get(key, ("watch", None))
+        gate = gates.get(key, ("watch", None, 0.0, 0.0))
+        tier, tol, floor_ms, floor_ct = gate
         if tier == "skip":
             continue
 
@@ -148,20 +152,28 @@ def compare(baseline: dict, results: dict, gates: dict) -> tuple[int, list[dict]
         r = r_vals.get(key)
 
         if b is None or r is None:
-            rows.append({"key": key, "baseline": b, "observed": r, "delta_pct": None,
+            rows.append({"key": key, "baseline": b, "observed": r,
+                         "delta_abs": None, "delta_pct": None,
                          "tier": tier, "status": STATUS_MISSING})
             continue
 
+        delta_abs = r - b
         if b == 0.0:
             delta_pct = 0.0 if r == 0.0 else float("inf")
         else:
             delta_pct = (r - b) / b * 100.0
 
+        # Counters (dropped_frames) are in frame counts, everything else in ms.
+        is_counter = key.startswith("dz.dropped_frames")
+        abs_floor = floor_ct if is_counter else floor_ms
+        within_pct = tol is not None and abs(delta_pct) <= tol
+        within_abs = abs_floor > 0 and abs(delta_abs) <= abs_floor
+
         if tier == "watch" or tol is None:
             status = STATUS_WATCH
-        elif abs(delta_pct) <= tol:
+        elif within_pct or within_abs:
             status = STATUS_PASS
-        elif delta_pct > tol:
+        elif delta_pct > 0:
             status = STATUS_REGRESSION
             has_regression = True
         else:
@@ -170,7 +182,8 @@ def compare(baseline: dict, results: dict, gates: dict) -> tuple[int, list[dict]
 
         rows.append({
             "key": key, "baseline": b, "observed": r,
-            "delta_pct": delta_pct, "tier": tier, "status": status,
+            "delta_abs": delta_abs, "delta_pct": delta_pct,
+            "tier": tier, "status": status,
         })
 
     exit_code = 0
@@ -195,6 +208,48 @@ def fmt_delta(v: float | None) -> str:
     return f"{v:+.1f}%"
 
 
+def _split_renderer(key: str) -> tuple[str | None, str]:
+    """Pull the 'gl'/'vk' segment out of a metric key.
+
+    'dz.frame_e2e.gl.avg'      -> ('gl', 'dz.frame_e2e.avg')
+    'dz.dropped_frames.vk'     -> ('vk', 'dz.dropped_frames')
+    'something.else'           -> (None, 'something.else')
+    """
+    parts = key.split(".")
+    for i, p in enumerate(parts):
+        if p in ("gl", "vk"):
+            return p, ".".join(parts[:i] + parts[i + 1:])
+    return None, key
+
+
+def _fmt_abs(v: float | None) -> str:
+    if v is None:
+        return "—"
+    return f"{v:+.3f}"
+
+
+def _render_subtable(title: str, rows: list[dict]) -> list[str]:
+    if not rows:
+        return []
+    out = [
+        f"#### {title}",
+        "",
+        "| metric | tier | baseline | observed | Δabs | Δ% | status |",
+        "|--------|------|----------|----------|------|-----|--------|",
+    ]
+    for r in rows:
+        if r["status"] == STATUS_SKIP:
+            continue
+        _, display = _split_renderer(r["key"])
+        out.append(
+            f"| `{display}` | {r['tier']} "
+            f"| {fmt_ms(r['baseline'])} | {fmt_ms(r['observed'])} "
+            f"| {_fmt_abs(r.get('delta_abs'))} | {fmt_delta(r['delta_pct'])} | {r['status']} |"
+        )
+    out.append("")
+    return out
+
+
 def render_markdown(rows: list[dict], exit_code: int, baseline_path: str,
                     results_path: str, ftl_mismatch: str | None) -> str:
     lines = ["## Frame-latency benchmark results", ""]
@@ -214,17 +269,17 @@ def render_markdown(rows: list[dict], exit_code: int, baseline_path: str,
         "",
         f"Baseline: `{baseline_path}` | Results: `{results_path}`",
         "",
-        "| metric | tier | baseline (ms) | observed (ms) | Δ% | status |",
-        "|--------|------|--------------|--------------|-----|--------|",
     ]
-    for r in rows:
-        if r["status"] == STATUS_SKIP:
-            continue
-        lines.append(
-            f"| `{r['key']}` | {r['tier']} "
-            f"| {fmt_ms(r['baseline'])} | {fmt_ms(r['observed'])} "
-            f"| {fmt_delta(r['delta_pct'])} | {r['status']} |"
-        )
+
+    gl_rows = [r for r in rows if _split_renderer(r["key"])[0] == "gl"]
+    vk_rows = [r for r in rows if _split_renderer(r["key"])[0] == "vk"]
+    other_rows = [r for r in rows if _split_renderer(r["key"])[0] is None]
+
+    lines += _render_subtable("OpenGL ES", gl_rows)
+    lines += _render_subtable("Vulkan", vk_rows)
+    if other_rows:
+        lines += _render_subtable("Other", other_rows)
+
     return "\n".join(lines) + "\n"
 
 

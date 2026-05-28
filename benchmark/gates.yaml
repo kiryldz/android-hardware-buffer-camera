@@ -1,13 +1,22 @@
 # Tolerance gates for scripts/compare-baseline.py.
 # Derived from CLAUDE.md baseline findings (SM-F936B, 5×10s, arm64-v8a release).
 #
-# tight  — fail on >5% deviation in either direction
-# loose  — fail on >10% deviation in either direction
+# Each gated tier has both a relative (tolerance_pct) and an absolute
+# (abs_floor_ms, or abs_floor_count for counter metrics) threshold. A metric
+# PASSES if EITHER threshold is satisfied:
+#   |Δ%|  ≤ tolerance_pct   OR   |Δabs| ≤ abs_floor
+# This protects sub-ms metrics from spurious red on small absolute jitter
+# (e.g. a 0.1ms shift on a 0.7ms baseline is +14% but below any frame-budget
+# meaningful threshold).
+#
+# tight  — fail on >5%  AND >0.5ms deviation in either direction
+# loose  — fail on >10% AND >0.5ms (or >5 frames for counters)
 # watch  — logged in step summary, never fails the check
 # skip   — not evaluated at all (high CV, single-outlier sensitive)
 
 tight:
   tolerance_pct: 5
+  abs_floor_ms: 0.5
   metrics:
     - dz.frame_e2e.gl.avg
     - dz.frame_e2e.gl.p90
@@ -20,6 +29,8 @@ tight:
 
 loose:
   tolerance_pct: 10
+  abs_floor_ms: 0.5
+  abs_floor_count: 5
   metrics:
     - dz.frame_render.gl.avg
     - dz.frame_render.vk.avg

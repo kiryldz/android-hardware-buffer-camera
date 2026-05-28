@@ -121,10 +121,12 @@ OpenGL is ~1.7 ms faster end-to-end on average (`frame_e2e` avg 13.25 vs 14.91),
 **Most of `frame_to_screen` is vsync wait.** `frame_to_screen.gl.avg ≈ 10.9 ms` but only ~0.57 ms of that is actual GL command submission (`frame_render.gl.avg`); the remaining ~10.3 ms is Choreographer/vsync wait. Same shape for Vulkan: ~11.7 ms total vs ~1.76 ms of work. Optimizations that shave µs off GL/VK commands won't move the e2e needle until the vsync wait is what we're trying to displace (e.g. higher refresh rate, lower-latency presentation extensions).
 
 **Which metrics to gate PRs on:**
-- **Tight (±5%)**: `frame_e2e.{gl,vk}.{avg, p90, p99}`, `frame_to_screen.{gl,vk}.p90`. All sub-3% CV.
-- **Looser (±10%)**: `frame_render.{gl,vk}.avg`, `frame_native_proc.{gl,vk}.avg`. CV 2–7%.
+- **Tight (±5% AND ±0.5 ms)**: `frame_e2e.{gl,vk}.{avg, p90, p99}`, `frame_to_screen.{gl,vk}.p90`. All sub-3% CV.
+- **Looser (±10% AND ±0.5 ms, or ±5 frames for counters)**: `frame_render.{gl,vk}.avg`, `frame_native_proc.{gl,vk}.avg`, `dropped_frames.{gl,vk}`. CV 2–7%.
 - **Watch only, no gate**: `frame_native_proc.{gl,vk}.{p90, p99}` and `frame_render.{gl,vk}.{p90, p99}` (5–25% CV — single-tail-sample noise).
 - **Skip entirely**: every `max` (single-outlier sensitive, 15–40% CV), and `p50` on screen-facing stages (bimodal — submit-to-vsync alignment).
+
+**Dual gate (relative + absolute floor).** Each gated tier has *both* a percentage tolerance and an absolute floor. A metric **passes** when *either* threshold is satisfied — `|Δ%| ≤ tolerance_pct` **OR** `|Δabs| ≤ abs_floor`. The absolute floor exists because sub-ms metrics like `frame_native_proc.avg` (~0.7 ms baseline) blow up to +14% on a 0.1 ms shift that is below any frame-budget significance. Real regressions exceed both thresholds; pure relative noise on tiny absolutes is filtered out.
 
 Slice counts are deterministic to within ±1 per 10 s window: ~298 frames per renderer (~30 fps from camera). A meaningful deviation in count is itself a regression signal.
 
@@ -138,7 +140,7 @@ Three required GitHub Actions checks gate every PR:
 | `benchmark-adreno` | `.github/workflows/benchmark.yml` | Runs `com.dz.camerafast.perf.FrameLatencyCapture` (an `:app/androidTest` instrumentation test that drives N×Ds Perfetto captures) on FTL Galaxy A52s 5G (Adreno 642L, API 34), compares against `benchmark/baselines/baseline-adreno.json` |
 | `benchmark-mali` | `.github/workflows/benchmark.yml` | Same on FTL Pixel 6 (Mali-G78, API 33), compares against `benchmark/baselines/baseline-mali.json` |
 
-The compare step uses **two-sided tolerance gates** from `benchmark/gates.yaml` (tight ±5%, loose ±10%):
+The compare step uses **two-sided tolerance gates** from `benchmark/gates.yaml` (tight ±5%/±0.5 ms, loose ±10%/±0.5 ms — pass if EITHER bound holds):
 - **Exit 1 (regression)** — blocks merge; fix the performance issue.
 - **Exit 2 (improvement)** — also blocks merge; copy the proposed JSON from the step summary into `benchmark/baselines/baseline-<gpu>.json` and commit.
 - **Exit 0** — all gated metrics within tolerance; green.
