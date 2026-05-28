@@ -24,9 +24,7 @@ tight:
   tolerance_pct: 5
   abs_floor_ms: 1.5
   metrics:
-    - dz.frame_e2e.gl.avg
     - dz.frame_e2e.gl.p90
-    - dz.frame_e2e.vk.avg
     - dz.frame_e2e.vk.p90
     - dz.frame_to_screen.gl.p90
     - dz.frame_to_screen.vk.p90
@@ -41,15 +39,21 @@ loose:
     # tolerance (±10% / ±0.5 ms) still catches real worst-case regressions.
     - dz.frame_e2e.gl.p99
     - dz.frame_e2e.vk.p99
-    - dz.frame_render.gl.avg
-    - dz.frame_render.vk.avg
-    - dz.frame_native_proc.gl.avg
-    - dz.frame_native_proc.vk.avg
     - dz.dropped_frames.gl
     - dz.dropped_frames.vk
 
 watch:
+  # avg is not representative — one slow frame skews the mean across hundreds
+  # of frames per iteration. p90 captures the steady-state, p99 the tail.
+  # Keep avg visible (under the collapsible "Watch-only" section) but never
+  # gate on it.
   metrics:
+    - dz.frame_e2e.gl.avg
+    - dz.frame_e2e.vk.avg
+    - dz.frame_render.gl.avg
+    - dz.frame_render.vk.avg
+    - dz.frame_native_proc.gl.avg
+    - dz.frame_native_proc.vk.avg
     - dz.frame_native_proc.gl.p90
     - dz.frame_native_proc.gl.p99
     - dz.frame_native_proc.vk.p90

@@ -228,25 +228,46 @@ def _fmt_abs(v: float | None) -> str:
     return f"{v:+.3f}"
 
 
+_TABLE_HEADER = (
+    "| metric | tier | baseline | observed | Δabs | Δ% | status |\n"
+    "|--------|------|----------|----------|------|-----|--------|"
+)
+
+
+def _format_row(r: dict) -> str:
+    _, display = _split_renderer(r["key"])
+    return (
+        f"| `{display}` | {r['tier']} "
+        f"| {fmt_ms(r['baseline'])} | {fmt_ms(r['observed'])} "
+        f"| {_fmt_abs(r.get('delta_abs'))} | {fmt_delta(r['delta_pct'])} | {r['status']} |"
+    )
+
+
 def _render_subtable(title: str, rows: list[dict]) -> list[str]:
-    if not rows:
+    # Drop SKIP rows entirely; collapse WATCH rows under a <details> block
+    # so the headline gated metrics stay visible by default.
+    gated = [r for r in rows if r["status"] not in (STATUS_SKIP, STATUS_WATCH)]
+    watched = [r for r in rows if r["status"] == STATUS_WATCH]
+    if not gated and not watched:
         return []
-    out = [
-        f"#### {title}",
-        "",
-        "| metric | tier | baseline | observed | Δabs | Δ% | status |",
-        "|--------|------|----------|----------|------|-----|--------|",
-    ]
-    for r in rows:
-        if r["status"] == STATUS_SKIP:
-            continue
-        _, display = _split_renderer(r["key"])
-        out.append(
-            f"| `{display}` | {r['tier']} "
-            f"| {fmt_ms(r['baseline'])} | {fmt_ms(r['observed'])} "
-            f"| {_fmt_abs(r.get('delta_abs'))} | {fmt_delta(r['delta_pct'])} | {r['status']} |"
-        )
-    out.append("")
+
+    out = [f"#### {title}", ""]
+
+    if gated:
+        out.append(_TABLE_HEADER)
+        out.extend(_format_row(r) for r in gated)
+        out.append("")
+
+    if watched:
+        out += [
+            f"<details>",
+            f"<summary>Watch-only metrics ({len(watched)}) — informational, never fail the build</summary>",
+            "",
+            _TABLE_HEADER,
+        ]
+        out.extend(_format_row(r) for r in watched)
+        out += ["", "</details>", ""]
+
     return out
 
 
