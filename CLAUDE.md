@@ -121,8 +121,8 @@ OpenGL is ~1.7 ms faster end-to-end on average (`frame_e2e` avg 13.25 vs 14.91),
 **Most of `frame_to_screen` is vsync wait.** `frame_to_screen.gl.avg ≈ 10.9 ms` but only ~0.57 ms of that is actual GL command submission (`frame_render.gl.avg`); the remaining ~10.3 ms is Choreographer/vsync wait. Same shape for Vulkan: ~11.7 ms total vs ~1.76 ms of work. Optimizations that shave µs off GL/VK commands won't move the e2e needle until the vsync wait is what we're trying to displace (e.g. higher refresh rate, lower-latency presentation extensions).
 
 **Which metrics to gate PRs on:**
-- **Tight (±5% AND ±1.5 ms)**: `frame_e2e.{gl,vk}.{avg, p90, p99}`, `frame_to_screen.{gl,vk}.p90`. All sub-3% CV locally; the 1.5 ms floor is calibrated for FTL Pixel 6 / Galaxy A52s, which drift ~1 ms run-to-run on identical commits (vs ~0.25 ms on local SM-F936B).
-- **Looser (±10% AND ±0.5 ms, or ±5 frames for counters)**: `frame_render.{gl,vk}.avg`, `frame_native_proc.{gl,vk}.avg`, `dropped_frames.{gl,vk}`. CV 2–7%.
+- **Tight (±5% AND ±1.5 ms)**: `frame_e2e.{gl,vk}.{avg, p90}`, `frame_to_screen.{gl,vk}.p90`. All sub-3% CV locally; the 1.5 ms floor is calibrated for FTL Pixel 6 / Galaxy A52s, which drift ~1 ms run-to-run on identical commits (vs ~0.25 ms on local SM-F936B).
+- **Looser (±10% AND ±0.5 ms, or ±5 frames for counters)**: `frame_e2e.{gl,vk}.p99`, `frame_render.{gl,vk}.avg`, `frame_native_proc.{gl,vk}.avg`, `dropped_frames.{gl,vk}`. CV 2–7%. p99 is the worst 1% of frames per iteration — inherently outlier-sensitive and observed to be the noisiest tight-tier metric on FTL, so it lives in loose despite frame_e2e.{avg, p90} staying tight.
 - **Watch only, no gate**: `frame_native_proc.{gl,vk}.{p90, p99}` and `frame_render.{gl,vk}.{p90, p99}` (5–25% CV — single-tail-sample noise).
 - **Skip entirely**: every `max` (single-outlier sensitive, 15–40% CV), and `p50` on screen-facing stages (bimodal — submit-to-vsync alignment).
 

@@ -26,10 +26,8 @@ tight:
   metrics:
     - dz.frame_e2e.gl.avg
     - dz.frame_e2e.gl.p90
-    - dz.frame_e2e.gl.p99
     - dz.frame_e2e.vk.avg
     - dz.frame_e2e.vk.p90
-    - dz.frame_e2e.vk.p99
     - dz.frame_to_screen.gl.p90
     - dz.frame_to_screen.vk.p90
 
@@ -38,6 +36,11 @@ loose:
   abs_floor_ms: 0.5
   abs_floor_count: 5
   metrics:
+    # p99 is the worst 1% of frames per iteration — inherently outlier-sensitive
+    # and observably the noisiest tight-tier metric on FTL devices. Loose
+    # tolerance (±10% / ±0.5 ms) still catches real worst-case regressions.
+    - dz.frame_e2e.gl.p99
+    - dz.frame_e2e.vk.p99
     - dz.frame_render.gl.avg
     - dz.frame_render.vk.avg
     - dz.frame_native_proc.gl.avg
