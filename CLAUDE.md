@@ -121,7 +121,7 @@ OpenGL is ~1.7 ms faster end-to-end on average (`frame_e2e` avg 13.25 vs 14.91),
 **Most of `frame_to_screen` is vsync wait.** `frame_to_screen.gl.avg ≈ 10.9 ms` but only ~0.57 ms of that is actual GL command submission (`frame_render.gl.avg`); the remaining ~10.3 ms is Choreographer/vsync wait. Same shape for Vulkan: ~11.7 ms total vs ~1.76 ms of work. Optimizations that shave µs off GL/VK commands won't move the e2e needle until the vsync wait is what we're trying to displace (e.g. higher refresh rate, lower-latency presentation extensions).
 
 **Which metrics to gate PRs on:**
-- **Tight (±5% AND ±0.5 ms)**: `frame_e2e.{gl,vk}.{avg, p90, p99}`, `frame_to_screen.{gl,vk}.p90`. All sub-3% CV.
+- **Tight (±5% AND ±1.5 ms)**: `frame_e2e.{gl,vk}.{avg, p90, p99}`, `frame_to_screen.{gl,vk}.p90`. All sub-3% CV locally; the 1.5 ms floor is calibrated for FTL Pixel 6 / Galaxy A52s, which drift ~1 ms run-to-run on identical commits (vs ~0.25 ms on local SM-F936B).
 - **Looser (±10% AND ±0.5 ms, or ±5 frames for counters)**: `frame_render.{gl,vk}.avg`, `frame_native_proc.{gl,vk}.avg`, `dropped_frames.{gl,vk}`. CV 2–7%.
 - **Watch only, no gate**: `frame_native_proc.{gl,vk}.{p90, p99}` and `frame_render.{gl,vk}.{p90, p99}` (5–25% CV — single-tail-sample noise).
 - **Skip entirely**: every `max` (single-outlier sensitive, 15–40% CV), and `p50` on screen-facing stages (bimodal — submit-to-vsync alignment).
@@ -140,7 +140,7 @@ Three required GitHub Actions checks gate every PR:
 | `benchmark-adreno` | `.github/workflows/benchmark.yml` | Runs `com.dz.camerafast.perf.FrameLatencyCapture` (an `:app/androidTest` instrumentation test that drives N×Ds Perfetto captures) on FTL Galaxy A52s 5G (Adreno 642L, API 34), compares against `benchmark/baselines/baseline-adreno.json` |
 | `benchmark-mali` | `.github/workflows/benchmark.yml` | Same on FTL Pixel 6 (Mali-G78, API 33), compares against `benchmark/baselines/baseline-mali.json` |
 
-The compare step uses **two-sided tolerance gates** from `benchmark/gates.yaml` (tight ±5%/±0.5 ms, loose ±10%/±0.5 ms — pass if EITHER bound holds):
+The compare step uses **two-sided tolerance gates** from `benchmark/gates.yaml` (tight ±5%/±1.5 ms, loose ±10%/±0.5 ms — pass if EITHER bound holds):
 - **Exit 1 (regression)** — blocks merge; fix the performance issue.
 - **Exit 2 (improvement)** — also blocks merge; copy the proposed JSON from the step summary into `benchmark/baselines/baseline-<gpu>.json` and commit.
 - **Exit 0** — all gated metrics within tolerance; green.

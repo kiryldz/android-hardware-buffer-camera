@@ -9,14 +9,20 @@
 # (e.g. a 0.1ms shift on a 0.7ms baseline is +14% but below any frame-budget
 # meaningful threshold).
 #
-# tight  — fail on >5%  AND >0.5ms deviation in either direction
-# loose  — fail on >10% AND >0.5ms (or >5 frames for counters)
+# tight  — fail on >5%  AND >1.5 ms deviation in either direction
+# loose  — fail on >10% AND >0.5 ms (or >5 frames for counters)
 # watch  — logged in step summary, never fails the check
 # skip   — not evaluated at all (high CV, single-outlier sensitive)
+#
+# Why 1.5 ms on tight: FTL Pixel 6 / Galaxy A52s show ~1 ms run-to-run drift
+# on frame_e2e even between identical commits (vs ~0.25 ms on local SM-F936B,
+# the source of CLAUDE.md's baseline calibration). 1.5 ms absorbs that
+# headroom while still catching meaningful >1.5 ms regressions on a 13-25 ms
+# baseline (which is what we actually want to detect).
 
 tight:
   tolerance_pct: 5
-  abs_floor_ms: 0.5
+  abs_floor_ms: 1.5
   metrics:
     - dz.frame_e2e.gl.avg
     - dz.frame_e2e.gl.p90
