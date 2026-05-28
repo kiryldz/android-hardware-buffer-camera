@@ -244,6 +244,8 @@ def main() -> None:
     parser.add_argument("baseline_json")
     parser.add_argument("results_json")
     parser.add_argument("--gates", default=default_gates)
+    parser.add_argument("--output-md", default=None,
+                        help="Also write the markdown comparison table to this file.")
     args = parser.parse_args()
 
     with open(args.baseline_json) as f:
@@ -266,6 +268,9 @@ def main() -> None:
             f"this run used `{r_model}`. Results are not comparable."
         )
         print(f"error: {ftl_mismatch}", file=sys.stderr)
+        if args.output_md:
+            with open(args.output_md, "w") as f:
+                f.write(f"> ❌ {ftl_mismatch}\n")
         sys.exit(3)
 
     gates = load_gates(args.gates)
@@ -282,6 +287,10 @@ def main() -> None:
         )
 
     md = render_markdown(rows, exit_code, args.baseline_json, args.results_json, ftl_mismatch)
+
+    if args.output_md:
+        with open(args.output_md, "w") as f:
+            f.write(md)
 
     step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if step_summary:

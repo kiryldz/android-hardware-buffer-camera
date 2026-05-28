@@ -133,7 +133,8 @@ jobs:
         run: |
           python3 scripts/compare-baseline.py \
             benchmark/baselines/baseline-adreno.json \
-            results-adreno.json
+            results-adreno.json \
+            --output-md comparison-adreno.md
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -141,6 +142,7 @@ jobs:
           name: benchmark-results-adreno
           path: |
             results-adreno.json
+            comparison-adreno.md
             trace-output-adreno/
             ftl-adreno.log
           retention-days: 14
@@ -209,7 +211,8 @@ jobs:
         run: |
           python3 scripts/compare-baseline.py \
             benchmark/baselines/baseline-mali.json \
-            results-mali.json
+            results-mali.json \
+            --output-md comparison-mali.md
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -217,6 +220,81 @@ jobs:
           name: benchmark-results-mali
           path: |
             results-mali.json
+            comparison-mali.md
             trace-output-mali/
             ftl-mali.log
           retention-days: 14
+
+  # ── PR comment with the consolidated p50/p90/p99 delta table ──────────────
+  # Runs after both benchmark jobs regardless of their pass/fail status so a
+  # regression still produces a visible comment (showing which metric tripped).
+  # PR-merge gating remains on the individual benchmark-{adreno,mali} jobs.
+  comment:
+    name: comment
+    needs: [benchmark-adreno, benchmark-mali]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: benchmark-results-adreno
+          path: adreno/
+
+      - uses: actions/download-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: benchmark-results-mali
+          path: mali/
+
+      - name: Build comment body
+        run: |
+          {
+            echo '<!-- benchmark-comment -->'
+            echo '## Frame-latency benchmark'
+            echo
+            echo '### Adreno (Galaxy A52s 5G, Adreno 642L)'
+            if [ -f adreno/comparison-adreno.md ]; then
+              cat adreno/comparison-adreno.md
+            else
+              echo '> ❌ benchmark-adreno did not produce a comparison — see the workflow run for details.'
+            fi
+            echo
+            echo '### Mali (Pixel 6, Mali-G78)'
+            if [ -f mali/comparison-mali.md ]; then
+              cat mali/comparison-mali.md
+            else
+              echo '> ❌ benchmark-mali did not produce a comparison — see the workflow run for details.'
+            fi
+            echo
+            echo '---'
+            echo
+            echo 'To re-seed baselines from this run, manually trigger the **Baselines** workflow on this branch.'
+          } > comment.md
+          echo "--- preview ---"
+          cat comment.md
+
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('comment.md', 'utf8');
+            const marker = '<!-- benchmark-comment -->';
+            const pr = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: pr,
+            });
+            const existing = comments.find(c => (c.body || '').includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                ...context.repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: pr, body,
+              });
+            }

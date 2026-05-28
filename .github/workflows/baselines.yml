@@ -1,0 +1,85 @@
+name: Baselines
+
+# Manually-triggered: reseeds benchmark/baselines/baseline-{adreno,mali}.json
+# from the latest Benchmark workflow run on this branch (or a specific run id),
+# then commits the updated files. The next Benchmark run on this branch will
+# compare against the new baselines — turning a previously-red "improvement"
+# or first-real-data PR green.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Benchmark run ID to source from (blank = latest on this branch)"
+        required: false
+        type: string
+
+concurrency:
+  group: baselines-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update-baselines:
+    name: update-baselines
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          # Need write token so we can push back.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve source Benchmark run
+        id: run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.run_id }}" ]; then
+            id="${{ inputs.run_id }}"
+          else
+            id=$(gh run list \
+                   --workflow=benchmark.yml \
+                   --branch="${{ github.ref_name }}" \
+                   --limit=1 \
+                   --json databaseId \
+                   --jq '.[0].databaseId')
+            if [ -z "$id" ] || [ "$id" = "null" ]; then
+              echo "::error::No Benchmark run found on branch ${{ github.ref_name }}. Run Benchmark first."
+              exit 1
+            fi
+          fi
+          echo "Sourcing baselines from Benchmark run $id"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Download adreno results
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh run download "${{ steps.run.outputs.id }}" -n benchmark-results-adreno -D adreno/
+
+      - name: Download mali results
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh run download "${{ steps.run.outputs.id }}" -n benchmark-results-mali -D mali/
+
+      - name: Overwrite baseline files
+        run: |
+          cp adreno/results-adreno.json benchmark/baselines/baseline-adreno.json
+          cp mali/results-mali.json     benchmark/baselines/baseline-mali.json
+          echo "--- adreno baseline ---"
+          head -20 benchmark/baselines/baseline-adreno.json
+          echo "--- mali baseline ---"
+          head -20 benchmark/baselines/baseline-mali.json
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet benchmark/baselines/; then
+            echo "Baselines already match Benchmark run ${{ steps.run.outputs.id }} — nothing to commit."
+            exit 0
+          fi
+          git add benchmark/baselines/baseline-adreno.json benchmark/baselines/baseline-mali.json
+          git commit -m "ci: refresh baselines from Benchmark run ${{ steps.run.outputs.id }}"
+          git push origin "HEAD:${{ github.ref_name }}"
